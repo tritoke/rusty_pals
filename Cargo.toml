@@ -1,0 +1,42 @@
+[package]
+name = "rusty_pals"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[[bin]]
+name = "s1c1"
+path = "src/set1/challenge1.rs"
+
+[[bin]]
+name = "s1c2"
+path = "src/set1/challenge2.rs"
+
+[[bin]]
+name = "s1c3"
+path = "src/set1/challenge3.rs"
+
+[[bin]]
+name = "s1c4"
+path = "src/set1/challenge4.rs"
+
+[[bin]]
+name = "s1c5"
+path = "src/set1/challenge5.rs"
+
+[[bin]]
+name = "s1c6"
+path = "src/set1/challenge6.rs"
+
+[[bin]]
+name = "s1c7"
+path = "src/set1/challenge7.rs"
+
+# [[bin]]
+# name = "s1c8"
+# path = "src/set1/challenge8.rs"
+
+[dependencies]
+color-eyre = "0.6.2"
+openssl = "0.10.41"
