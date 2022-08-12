@@ -33,9 +33,41 @@ path = "src/set1/challenge6.rs"
 name = "s1c7"
 path = "src/set1/challenge7.rs"
 
+[[bin]]
+name = "s1c8"
+path = "src/set1/challenge8.rs"
+
+[[bin]]
+name = "s2c9"
+path = "src/set2/challenge9.rs"
+
 # [[bin]]
-# name = "s1c8"
-# path = "src/set1/challenge8.rs"
+# name = "s2c10"
+# path = "src/set2/challenge10.rs"
+#
+# [[bin]]
+# name = "s2c11"
+# path = "src/set2/challenge11.rs"
+#
+# [[bin]]
+# name = "s2c12"
+# path = "src/set2/challenge12.rs"
+#
+# [[bin]]
+# name = "s2c13"
+# path = "src/set2/challenge13.rs"
+#
+# [[bin]]
+# name = "s2c14"
+# path = "src/set2/challenge14.rs"
+#
+# [[bin]]
+# name = "s2c15"
+# path = "src/set2/challenge15.rs"
+#
+# [[bin]]
+# name = "s2c16"
+# path = "src/set2/challenge16.rs"
 
 [dependencies]
 color-eyre = "0.6.2"

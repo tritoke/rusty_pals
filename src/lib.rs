@@ -1,5 +1,4 @@
 #![feature(array_chunks)]
-#![feature(assert_matches)]
 #![feature(array_try_map)]
 
 pub mod base64;
