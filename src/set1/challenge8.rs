@@ -3,7 +3,6 @@
 use std::collections::HashSet;
 
 use color_eyre::eyre::{eyre, Result};
-use rusty_pals::base64::b64decode;
 
 use rusty_pals::hex;
 

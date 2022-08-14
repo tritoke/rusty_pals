@@ -56,6 +56,31 @@ pub fn xor_blocks_into(a: impl AsRef<[u8]>, b: impl AsRef<[u8]>, out: &mut [u8])
     Ok(())
 }
 
+/// XOR two blocks of data, writing the result into the second block
+/// ```
+/// use rusty_pals::xor::xor_blocks_together;
+/// let mut out = Vec::from(b"def");
+/// assert!(xor_blocks_together("abc", out.as_mut_slice()).is_ok());
+/// assert_eq!(out, [5, 7, 5]);
+/// ```
+pub fn xor_blocks_together(a: impl AsRef<[u8]>, b: &mut [u8]) -> Result<()> {
+    let a = a.as_ref();
+
+    // ensure we have the same length blocks
+    ensure!(
+        a.len() == b.len(),
+        "Mismatch in block length: {} != {}",
+        a.len(),
+        b.len()
+    );
+
+    for (x, y) in a.into_iter().zip(b.iter_mut()) {
+        *y = *x ^ *y;
+    }
+
+    Ok(())
+}
+
 /// XOR a block of data with a key
 /// ```
 /// use rusty_pals::xor::xor_with_key;
@@ -149,6 +174,21 @@ mod tests {
         let b = [101, 102, 103];
         let mut out = vec![];
         assert!(xor_blocks_into(a, b, out.as_mut_slice()).is_err());
+    }
+
+    #[test]
+    fn test_xor_blocks_together() {
+        let a = [1, 2, 3, 4];
+        let mut b = vec![101, 102, 103, 104];
+        assert!(xor_blocks_together(a, b.as_mut_slice()).is_ok());
+        assert_eq!(b, [100, 100, 100, 108]);
+    }
+
+    #[test]
+    fn test_xor_blocks_together_fails_len_mismatch() {
+        let a = [1, 2, 3, 4];
+        let mut b = vec![101, 102, 103];
+        assert!(xor_blocks_together(a, b.as_mut_slice()).is_err());
     }
 
     #[test]

@@ -1,4 +1,4 @@
-use color_eyre::eyre::{ensure, eyre, Result};
+use color_eyre::eyre::{eyre, Result};
 
 /// Base64 table from RFC4648
 const ENCODE_TABLE: [u8; 64] = [

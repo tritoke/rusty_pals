@@ -37,17 +37,16 @@ impl Alphabet {
     }
 }
 
-/// Calculate the expected index of coincidence from a character distribution
-/// https://en.wikipedia.org/wiki/Index_of_coincidence
-fn ioc_from_dist(dist: &[f64]) -> f64 {
-    let c = dist.len() as f64;
-    dist.iter().map(|f| f * f).sum::<f64>() / (1.0 / c)
-}
+// Calculate the expected index of coincidence from a character distribution
+// https://en.wikipedia.org/wiki/Index_of_coincidence
+// fn ioc_from_dist(dist: &[f64]) -> f64 {
+//     let c = dist.len() as f64;
+//     dist.iter().map(|f| f * f).sum::<f64>() / (1.0 / c)
+// }
 
 // pub fn ioc(text: impl AsRef<[u8]>) -> f64 {
 //
 // }
-
 /// Count the percentage frequencies of each alphabetic character in the text
 /// ```
 /// use rusty_pals::ioc::{count_freq, Alphabet};
@@ -99,9 +98,9 @@ mod tests {
         assert_eq!(counts, vec![(2.0 / 54.0) * 100.0; 27]);
     }
 
-    #[test]
-    fn test_ioc_from_dist() {
-        let counts = vec![1.0 / 27.0; 27];
-        assert!(f64::abs(ioc_from_dist(&counts) - 1.0) <= 1e-9);
-    }
+    // #[test]
+    // fn test_ioc_from_dist() {
+    //     let counts = vec![1.0 / 27.0; 27];
+    //     assert!(f64::abs(ioc_from_dist(&counts) - 1.0) <= 1e-9);
+    // }
 }
