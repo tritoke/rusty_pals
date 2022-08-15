@@ -45,9 +45,9 @@ path = "src/set2/challenge9.rs"
 name = "s2c10"
 path = "src/set2/challenge10.rs"
 
-# [[bin]]
-# name = "s2c11"
-# path = "src/set2/challenge11.rs"
+[[bin]]
+name = "s2c11"
+path = "src/set2/challenge11.rs"
 
 # [[bin]]
 # name = "s2c12"

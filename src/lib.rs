@@ -6,4 +6,5 @@ pub mod edit;
 pub mod hex;
 pub mod ioc;
 pub mod pad;
+pub mod rand;
 pub mod xor;
