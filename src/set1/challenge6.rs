@@ -77,8 +77,8 @@ fn score_decryption(dec: &[u8]) -> f64 {
     let alphabet = Alphabet::AlphaSpace;
     let counts = count_freq(dec, alphabet);
     counts
-        .into_iter()
-        .zip(alphabet.freqs().into_iter())
+        .iter()
+        .zip(alphabet.freqs().iter())
         .map(|(a, b)| (a - b).abs())
         .sum()
 }

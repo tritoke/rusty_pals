@@ -1,3 +1,4 @@
+#![allow(clippy::erasing_op)]
 use color_eyre::eyre::{eyre, Result};
 
 /// Base64 table from RFC4648

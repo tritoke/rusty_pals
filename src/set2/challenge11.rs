@@ -1,20 +1,15 @@
 use color_eyre::eyre::Result;
 use openssl::symm::{encrypt, Cipher};
-use rusty_pals::hex::to_hex;
 use rusty_pals::rand::XorShift32;
-use std::collections::HashSet;
 
 fn main() -> Result<()> {
     color_eyre::install()?;
 
     let mut count_correct = 0;
-    let num_rounds = 100;
+    let num_rounds = 10000;
     let mut rng = XorShift32::new(42)?;
     for _ in 0..num_rounds {
-        let (is_ecb, encrypted) = encryption_oracle(
-            &mut rng,
-            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-        )?;
+        let (is_ecb, encrypted) = encryption_oracle(&mut rng, "a".repeat(43))?;
         let is_ecb_guess = detect_mode(encrypted);
         count_correct += (is_ecb == is_ecb_guess) as usize;
     }
@@ -42,8 +37,12 @@ fn encryption_oracle(rng: &mut XorShift32, input: impl AsRef<[u8]>) -> Result<(b
     Ok((gen_ecb, enc))
 }
 
+/// Detect the cipher mode by encrypting data which has at least 2 consecutive blocks with identical data.
+/// We can construct an input like this by passing a long run of the same data to the oracle.
+/// For ECB mode this will result in two consecutive blocks which encrypt to the same value.
+/// Whereas for CBC mode these blocks will encrypt differently due to the XOR operation mixing the bits.
 fn detect_mode(enc: Vec<u8>) -> bool {
-    let chunks: Vec<_> = enc.chunks_exact(16).collect();
-    let unique_chunks: HashSet<_> = chunks.iter().copied().collect();
-    chunks.len() != unique_chunks.len()
+    enc.chunks_exact(16)
+        .zip(enc.chunks_exact(16).skip(1))
+        .any(|(a, b)| a == b)
 }

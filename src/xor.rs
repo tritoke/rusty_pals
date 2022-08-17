@@ -17,11 +17,7 @@ pub fn xor_blocks(a: impl AsRef<[u8]>, b: impl AsRef<[u8]>) -> Result<Vec<u8>> {
         b.len()
     );
 
-    let xorred = a
-        .into_iter()
-        .zip(b.into_iter())
-        .map(|(x, y)| x ^ y)
-        .collect();
+    let xorred = a.iter().zip(b.iter()).map(|(x, y)| x ^ y).collect();
 
     Ok(xorred)
 }
@@ -48,7 +44,7 @@ pub fn xor_blocks_into(a: impl AsRef<[u8]>, b: impl AsRef<[u8]>, out: &mut [u8])
     // ensure the output has enough space
     ensure!(a.len() <= out.len(), "Insuffient space in output slice.",);
 
-    let xorred = a.into_iter().zip(b.into_iter()).map(|(x, y)| x ^ y);
+    let xorred = a.iter().zip(b.iter()).map(|(x, y)| x ^ y);
     for (x, y) in out.iter_mut().zip(xorred) {
         *x = y;
     }
@@ -74,8 +70,8 @@ pub fn xor_blocks_together(a: impl AsRef<[u8]>, b: &mut [u8]) -> Result<()> {
         b.len()
     );
 
-    for (x, y) in a.into_iter().zip(b.iter_mut()) {
-        *y = *x ^ *y;
+    for (x, y) in a.iter().zip(b.iter_mut()) {
+        *y ^= *x;
     }
 
     Ok(())
@@ -90,11 +86,11 @@ pub fn xor_with_key(data: impl AsRef<[u8]>, key: impl AsRef<[u8]>) -> Result<Vec
     let data = data.as_ref();
     let key = key.as_ref();
 
-    ensure!(key.len() >= 1, "Key must be at least one byte long");
+    ensure!(!key.is_empty(), "XOR Key cannot be empty.");
 
     let xorred = data
-        .into_iter()
-        .zip(key.into_iter().cycle())
+        .iter()
+        .zip(key.iter().cycle())
         .map(|(x, y)| x ^ y)
         .collect();
 
@@ -118,13 +114,10 @@ pub fn xor_with_key_into(
     let data = data.as_ref();
     let key = key.as_ref();
 
-    ensure!(key.len() >= 1, "Key must be at least one byte long");
+    ensure!(!key.is_empty(), "XOR Key cannot be empty.");
     ensure!(out.len() >= data.len(), "Insuffient space in output slice.");
 
-    let xorred = data
-        .into_iter()
-        .zip(key.into_iter().cycle())
-        .map(|(x, y)| x ^ y);
+    let xorred = data.iter().zip(key.iter().cycle()).map(|(x, y)| x ^ y);
 
     for (x, y) in out.iter_mut().zip(xorred) {
         *x = y;

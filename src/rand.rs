@@ -17,7 +17,7 @@ impl XorShift32 {
         x ^= x >> 17;
         x ^= x << 5;
         self.state = x;
-        return self.state;
+        self.state
     }
 
     pub fn gen_bool(&mut self) -> bool {

@@ -13,7 +13,7 @@ fn main() -> Result<()> {
     let mut index = 0;
     let mut key = 0;
     for (i, ct) in data.iter().map(AsRef::as_ref).enumerate() {
-        let (k, score) = break_single_xor(&ct)?;
+        let (k, score) = break_single_xor(ct)?;
         if score < min_score {
             min_score = score;
             index = i;
@@ -48,8 +48,8 @@ fn score_decryption(dec: &[u8]) -> f64 {
     let alphabet = Alphabet::AlphaSpace;
     let counts = count_freq(dec, alphabet);
     counts
-        .into_iter()
-        .zip(alphabet.freqs().into_iter())
+        .iter()
+        .zip(alphabet.freqs().iter())
         .map(|(a, b)| (a - b).abs())
         .sum()
 }

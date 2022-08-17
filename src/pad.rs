@@ -17,7 +17,6 @@ pub fn pkcs7_into(data: &mut Vec<u8>, block_length: u8) {
 
 /// Implement the PKCS#7 padding scheme - unpad
 pub fn pkcs7_unpad(data: &[u8]) -> Result<&[u8]> {
-    let data = data.as_ref();
     let pad = *data
         .last()
         .ok_or_else(|| eyre!("Cannot unpad empty data."))?;
