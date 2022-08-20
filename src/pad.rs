@@ -36,7 +36,7 @@ mod tests {
 
     #[test]
     fn test_pkcs7_into() {
-        let mut data = Vec::from(b"YELLOW SUBMARINE");
+        let mut data = b"YELLOW SUBMARINE".to_vec();
         pkcs7_into(&mut data, 20);
         assert_eq!(data, b"YELLOW SUBMARINE\x04\x04\x04\x04");
     }
@@ -52,7 +52,7 @@ mod tests {
 
     #[test]
     fn test_pkcs7_into_max_pad() {
-        let mut data = Vec::from(b"YELLOW SUBMARINE");
+        let mut data = b"YELLOW SUBMARINE".to_vec();
         pkcs7_into(&mut data, 16);
         assert_eq!(
             data,
@@ -68,7 +68,7 @@ mod tests {
 
     #[test]
     fn test_pkcs7_into_min_pad() {
-        let mut data = Vec::from(b"YELLOW SUBMARINE");
+        let mut data = b"YELLOW SUBMARINE".to_vec();
         pkcs7_into(&mut data, 17);
         assert_eq!(data, b"YELLOW SUBMARINE\x01");
     }

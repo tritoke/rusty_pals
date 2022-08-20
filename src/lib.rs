@@ -1,11 +1,11 @@
-#![feature(array_chunks)]
-#![feature(array_try_map)]
+#![feature(array_chunks, array_try_map)]
+// #![deny(missing_docs)]
 
-pub mod base64;
 pub mod edit;
-pub mod hex;
-pub mod ioc;
+pub mod encoding;
+pub mod fit;
 pub mod oracle;
 pub mod pad;
 pub mod rand;
+pub mod util;
 pub mod xor;

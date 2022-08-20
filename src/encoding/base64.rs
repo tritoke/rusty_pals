@@ -1,18 +1,14 @@
 #![allow(clippy::erasing_op)]
 use color_eyre::eyre::{eyre, Result};
 
-/// Base64 table from RFC4648
-const ENCODE_TABLE: [u8; 64] = [
-    b'A', b'B', b'C', b'D', b'E', b'F', b'G', b'H', b'I', b'J', b'K', b'L', b'M', b'N', b'O', b'P',
-    b'Q', b'R', b'S', b'T', b'U', b'V', b'W', b'X', b'Y', b'Z', b'a', b'b', b'c', b'd', b'e', b'f',
-    b'g', b'h', b'i', b'j', b'k', b'l', b'm', b'n', b'o', b'p', b'q', b'r', b's', b't', b'u', b'v',
-    b'w', b'x', b'y', b'z', b'0', b'1', b'2', b'3', b'4', b'5', b'6', b'7', b'8', b'9', b'+', b'/',
-];
+/// Base64 Alphabet from RFC4648
+const TABLE: [u8; 64] = *b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
 /// Implements Base64 encoding based on RFC4648
 /// ```
-/// use rusty_pals::base64::b64encode;
-/// assert_eq!(b64encode("foobar"), "Zm9vYmFy".to_string());
+/// use rusty_pals::encoding::{Encodable, b64encode};
+/// assert_eq!(b64encode("foobar"), "Zm9vYmFy");
+/// assert_eq!(b"foobar".encode_b64() , "Zm9vYmFy");
 /// ```
 pub fn b64encode(input: impl AsRef<[u8]>) -> String {
     let data = input.as_ref();
@@ -31,10 +27,10 @@ pub fn b64encode(input: impl AsRef<[u8]>) -> String {
 
         // unpack 6 bits at a time
         const MASK: usize = 0b111_111;
-        let c1 = ENCODE_TABLE[(bits >> (3 * 6)) & MASK] as char;
-        let c2 = ENCODE_TABLE[(bits >> (2 * 6)) & MASK] as char;
-        let c3 = ENCODE_TABLE[(bits >> (1 * 6)) & MASK] as char;
-        let c4 = ENCODE_TABLE[(bits >> (0 * 6)) & MASK] as char;
+        let c1 = TABLE[(bits >> (3 * 6)) & MASK] as char;
+        let c2 = TABLE[(bits >> (2 * 6)) & MASK] as char;
+        let c3 = TABLE[(bits >> (1 * 6)) & MASK] as char;
+        let c4 = TABLE[(bits >> (0 * 6)) & MASK] as char;
 
         // push characters and pad where appropriate
         encoded.push(c1);
@@ -48,9 +44,10 @@ pub fn b64encode(input: impl AsRef<[u8]>) -> String {
 
 /// Implements Base64 decoding based on RFC4648
 /// ```
-/// use rusty_pals::base64::b64decode;
-/// assert_eq!(b64decode("Zm9vYmFy").unwrap().as_slice(), b"foobar");
-///
+/// use rusty_pals::encoding::{Decodable, b64decode};
+/// assert_eq!(b64decode("Zm9vYmFy").unwrap(), b"foobar");
+/// assert_eq!("Zm9vYmFy".decode_b64().unwrap(), b"foobar");
+/// ```
 pub fn b64decode(input: impl AsRef<[u8]>) -> Result<Vec<u8>> {
     let data = input.as_ref();
     let pad = data.ends_with(b"==") as usize + data.ends_with(b"=") as usize;
@@ -88,6 +85,7 @@ pub fn b64decode(input: impl AsRef<[u8]>) -> Result<Vec<u8>> {
     Ok(decoded)
 }
 
+/// Translate a base64 character to a sextet
 fn to_sextet(c: u8) -> Result<u8> {
     match c {
         b'A'..=b'Z' => Ok(c - b'A'),
