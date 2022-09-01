@@ -30,6 +30,17 @@ impl XorShift32 {
             .take(n)
             .collect()
     }
+
+    pub fn gen_array<const N: usize>(&mut self) -> [u8; N] {
+        let mut out = [0; N];
+        let bytes = std::iter::from_fn(|| Some(self.gen().to_le_bytes())).flatten();
+
+        for (o, b) in out.iter_mut().zip(bytes) {
+            *o = b;
+        }
+
+        out
+    }
 }
 
 #[cfg(test)]

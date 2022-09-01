@@ -1,7 +1,6 @@
 use crate::fit::{edit_distance, score_text};
 use color_eyre::eyre::{ensure, eyre, Result};
 use std::arch::x86_64::{_mm_loadu_si128, _mm_storeu_si128, _mm_xor_si128};
-use std::mem;
 use std::ops::RangeInclusive;
 
 /// XOR two blocks of data together

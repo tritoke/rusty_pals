@@ -2,3 +2,4 @@
 .idea/*
 /ref/*.pdf
 /ref
+Cargo.lock
