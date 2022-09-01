@@ -1,6 +1,7 @@
-use crate::edit::edit_distance;
-use crate::fit::score_text;
+use crate::fit::{edit_distance, score_text};
 use color_eyre::eyre::{ensure, eyre, Result};
+use std::arch::x86_64::{_mm_loadu_si128, _mm_storeu_si128, _mm_xor_si128};
+use std::mem;
 use std::ops::RangeInclusive;
 
 /// XOR two blocks of data together
@@ -127,6 +128,46 @@ pub fn xor_with_key_into(
     }
 
     Ok(())
+}
+
+/// Use SIMD to accelerate XORing a 16 byte block
+/// ```
+/// use rusty_pals::xor::xor_block_simd;
+/// let block_1 = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
+/// let block_2 = [15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0];
+/// let xorred = unsafe { xor_block_simd(&block_1, &block_2) };
+/// assert_eq!(xorred, [15; 16])
+/// ```
+#[cfg(target_feature = "sse2")]
+pub fn xor_block_simd(a: &[u8; 16], b: &[u8; 16]) -> [u8; 16] {
+    // SAFETY: unaligned load MUST be used here
+    unsafe {
+        let b1 = _mm_loadu_si128(a.as_ptr() as *const _);
+        let b2 = _mm_loadu_si128(b.as_ptr() as *const _);
+        let xorred = _mm_xor_si128(b1, b2);
+        let mut out: [u8; 16] = [0; 16];
+        _mm_storeu_si128(out.as_mut_ptr() as *mut _, xorred);
+        out
+    }
+}
+
+/// Use SIMD to accelerate XORing a 16 byte block, into another
+/// ```
+/// use rusty_pals::xor::xor_block_simd_into;
+/// let block_1 = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
+/// let mut block_2 = [15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0];
+/// unsafe { xor_block_simd_into(&block_1, &mut block_2) };
+/// assert_eq!(block_2, [15; 16])
+/// ```
+#[cfg(target_feature = "sse2")]
+pub fn xor_block_simd_into(a: &[u8; 16], b: &mut [u8; 16]) {
+    unsafe {
+        // SAFETY: unaligned load MUST be used here
+        let b1 = _mm_loadu_si128(a.as_ptr() as *const _);
+        let b2 = _mm_loadu_si128(b.as_ptr() as *const _);
+        let xorred = _mm_xor_si128(b1, b2);
+        _mm_storeu_si128(b.as_mut_ptr() as *mut _, xorred);
+    }
 }
 
 /// Break a xor with a single byte key, returns the byte key
@@ -287,5 +328,37 @@ mod tests {
         let data = [1, 2, 3, 4, 5];
         let mut out = vec![0; 4];
         assert!(xor_with_key_into(data, "B", out.as_mut_slice()).is_err());
+    }
+
+    #[test]
+    #[cfg(target_feature = "sse2")]
+    fn test_xor_block_simd() {
+        let b1 = [
+            243, 158, 45, 150, 205, 223, 233, 225, 185, 7, 222, 69, 206, 190, 183, 78,
+        ];
+        let b2 = [
+            26, 13, 61, 74, 96, 85, 87, 197, 214, 22, 169, 251, 114, 4, 204, 80,
+        ];
+        let correct = [
+            233, 147, 16, 220, 173, 138, 190, 36, 111, 17, 119, 190, 188, 186, 123, 30,
+        ];
+        let xorred = xor_block_simd(&b1, &b2);
+        assert_eq!(xorred, correct);
+    }
+
+    #[test]
+    #[cfg(target_feature = "sse2")]
+    fn test_xor_block_simd_into() {
+        let b1 = [
+            243, 158, 45, 150, 205, 223, 233, 225, 185, 7, 222, 69, 206, 190, 183, 78,
+        ];
+        let mut b2 = [
+            26, 13, 61, 74, 96, 85, 87, 197, 214, 22, 169, 251, 114, 4, 204, 80,
+        ];
+        let correct = [
+            233, 147, 16, 220, 173, 138, 190, 36, 111, 17, 119, 190, 188, 186, 123, 30,
+        ];
+        xor_block_simd_into(&b1, &mut b2);
+        assert_eq!(b2, correct);
     }
 }

@@ -1,9 +1,10 @@
 #![feature(array_chunks)]
 
 use color_eyre::eyre::{eyre, Result};
-use openssl::symm::{decrypt, Cipher};
 
 use rusty_pals::encoding::*;
+use rusty_pals::encryption::aes::*;
+use rusty_pals::encryption::pad::*;
 use rusty_pals::fit::*;
 use rusty_pals::xor::*;
 
@@ -106,10 +107,11 @@ fn challenge7() -> Result<()> {
     let data = b64decode(input)?;
     let key = b"YELLOW SUBMARINE";
 
-    let cipher = Cipher::aes_128_ecb();
-    let dec = decrypt(cipher, key, None, &data)?;
+    let key = Aes128::new(*key);
+    let dec = decrypt(data, key, None, Mode::ECB);
+    let unpad = pkcs7_unpad(&dec[..])?;
 
-    assert_eq!(dec, include_bytes!("files/7_correct.txt"));
+    assert_eq!(unpad, include_bytes!("files/7_correct.txt"));
 
     Ok(())
 }

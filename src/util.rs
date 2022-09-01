@@ -1,6 +1,5 @@
 use std::collections::HashSet;
 use std::hash::Hash;
-use std::{mem, slice};
 
 /// Detect whether an iterator contains a duplicate element
 pub fn has_duplicate<T>(it: impl IntoIterator<Item = T>) -> bool
@@ -18,55 +17,23 @@ where
 }
 
 /// Cast a slice to a slice of arrays
-fn cast_as_array<A, B, const N: usize>(slice: &[A]) -> &[[B; N]] {
-    let num_elems = slice.len();
-    let ptr = slice.as_ptr();
-
-    // check the alignment of the pointer
-    let align = mem::align_of::<B>();
+pub fn cast_as_array<T, const N: usize>(slice: &[T]) -> &[[T; N]] {
+    let (pre, mid, post) = unsafe { slice.align_to() };
     assert!(
-        ptr as usize % align == 0,
-        "Pointer is not sufficiently well aligned for the target type: {ptr:?} % {align} == {}.",
-        ptr as usize % align
+        pre.is_empty() && post.is_empty(),
+        "Slice does not have sufficient alignment."
     );
-
-    // calculate the number of destination element
-    // ensure we have enough size in the slice
-    let arr_size = mem::size_of::<[B; N]>();
-    let orig_size = mem::size_of::<A>() * num_elems;
-    assert!(orig_size % arr_size == 0, "Destination arrays do not evenly divide the source slice's size. {orig_size} % {arr_size} == {}", orig_size / arr_size);
-    let new_num_elems = orig_size / arr_size;
-
-    // SAFETY:
-    // - References must always be aligned, the check in the first assert! checks this
-    // - References must always have a valid length, the second assert! checks this
-    unsafe { slice::from_raw_parts(ptr as *const _, new_num_elems) }
+    mid
 }
 
 /// Cast a mutable slice to a mutable slice of arrays
-fn cast_as_array_mut<A, B, const N: usize>(slice: &mut [A]) -> &mut [[B; N]] {
-    let num_elems = slice.len();
-    let ptr = slice.as_ptr();
-
-    // check the alignment of the pointer
-    let align = mem::align_of::<B>();
+pub fn cast_as_array_mut<T, const N: usize>(slice: &mut [T]) -> &mut [[T; N]] {
+    let (pre, mid, post) = unsafe { slice.align_to_mut() };
     assert!(
-        ptr as usize % align == 0,
-        "Pointer is not sufficiently well aligned for the target type: {ptr:?} % {align} == {}.",
-        ptr as usize % align
+        pre.is_empty() && post.is_empty(),
+        "Slice does not have sufficient alignment."
     );
-
-    // calculate the number of destination element
-    // ensure we have enough size in the slice
-    let arr_size = mem::size_of::<[B; N]>();
-    let orig_size = mem::size_of::<A>() * num_elems;
-    assert!(orig_size % arr_size == 0, "Destination arrays do not evenly divide the source slice's size. {orig_size} % {arr_size} == {}", orig_size / arr_size);
-    let new_num_elems = orig_size / arr_size;
-
-    // SAFETY:
-    // - References must always be aligned, the check in the first assert! checks this
-    // - References must always have a valid length, the second assert! checks this
-    unsafe { slice::from_raw_parts_mut(ptr as *mut _, new_num_elems) }
+    mid
 }
 
 #[cfg(test)]
@@ -85,35 +52,29 @@ mod tests {
 
     #[test]
     #[should_panic]
-    fn test_cast_as_array_unaligned_fails() {
-        let input: Vec<u32> = (0..16).collect();
-        if input.as_ptr() as usize % 8 == 4 {
-            // unaligned case
-            let arrays: &[[u64; 2]] = cast_as_array(&input[..]);
-        } else {
-            // artificially create an unaligned access
-            let arrays: &[[u64; 1]] = cast_as_array(&[1..=8]);
-        }
+    fn test_cast_as_array_size_mismatch_fails() {
+        let input: Vec<u32> = (0..10).collect();
+        assert_eq!(cast_as_array(&input[..]), [[0, 1, 2, 3], [4, 5, 6, 7]]);
     }
 
     #[test]
     fn test_cast_as_array_mut() {
-        let mut input: Vec<u32> = (0..4).collect();
+        let mut input: Vec<u8> = (0..16).collect();
         let arrays: &mut [[u8; 4]] = cast_as_array_mut(&mut input[..]);
         arrays[0] = [0xFF; 4];
-        assert_eq!(input, [0xFFFFFFFF, 1, 2, 3]);
+        assert_eq!(
+            input,
+            [0xFF, 0xFF, 0xFF, 0xFF, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+        );
     }
 
     #[test]
     #[should_panic]
-    fn test_cast_as_array_mut_unaligned_fails() {
-        let mut input: Vec<u32> = (0..16).collect();
-        if input.as_ptr() as usize % 8 == 4 {
-            // unaligned case
-            let arrays: &mut [[u64; 2]] = cast_as_array_mut(&mut input[..]);
-        } else {
-            // artificially create an unaligned access
-            let arrays: &mut [[u64; 1]] = cast_as_array_mut(&mut [1..=8]);
-        }
+    fn test_cast_as_array_mut_size_mismatch_fails() {
+        let mut input: Vec<u32> = (0..10).collect();
+        assert_eq!(
+            cast_as_array_mut(&mut input[..]),
+            [[0, 1, 2, 3], [4, 5, 6, 7]]
+        );
     }
 }

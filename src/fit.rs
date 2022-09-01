@@ -19,6 +19,14 @@ pub fn score_text(text: impl AsRef<[u8]>) -> u64 {
         / text.len() as u64
 }
 
+pub fn edit_distance(a: impl AsRef<[u8]>, b: impl AsRef<[u8]>) -> u32 {
+    a.as_ref()
+        .iter()
+        .zip(b.as_ref())
+        .map(|(b1, b2)| (b1 ^ b2).count_ones())
+        .sum()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -29,5 +37,11 @@ mod tests {
             score_text("abcde"),
             (76656 + 15791 + 22106 + 38133 + 118246) / 5
         );
+    }
+
+    #[test]
+    fn test_edit_distance() {
+        let dist = edit_distance("this is a test", "wokka wokka!!!");
+        assert_eq!(dist, 37);
     }
 }

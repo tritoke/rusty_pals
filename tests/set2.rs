@@ -3,7 +3,7 @@
 use color_eyre::eyre::{ensure, eyre, Result};
 use openssl::symm::{Cipher, Crypter, Mode};
 use rusty_pals::encoding::b64decode;
-use rusty_pals::pad::{pkcs7, pkcs7_unpad};
+use rusty_pals::encryption::pad::{pkcs7, pkcs7_unpad};
 use rusty_pals::xor::xor_blocks_together;
 
 #[test]
