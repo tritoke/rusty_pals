@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use crate::util::{cast_as_array, cast_as_array_mut};
+use crate::util::{cast_as_arrays, cast_as_arrays_mut};
 use crate::xor::{xor_block_simd, xor_block_simd_into};
 use std::arch::x86_64::*;
 
@@ -341,14 +341,14 @@ where
 }
 
 /// Perform encryption using AES ECB mode
-fn encrypt_ecb(input: &[[u8; 16]], out: &mut [[u8; 16]], aes: impl Aes) {
+fn encrypt_ecb(input: &[[u8; 16]], out: &mut [[u8; 16]], aes: &impl Aes) {
     for (block, out_block) in input.iter().zip(out.iter_mut()) {
         aes.encrypt_block(block, out_block);
     }
 }
 
 /// Perform encryption using AES CBC mode
-fn encrypt_cbc(input: &[[u8; 16]], out: &mut [[u8; 16]], iv: &[u8; 16], aes: impl Aes) {
+fn encrypt_cbc(input: &[[u8; 16]], out: &mut [[u8; 16]], iv: &[u8; 16], aes: &impl Aes) {
     let mut state = *iv;
     for (block, out_block) in input.iter().zip(out.iter_mut()) {
         let input = xor_block_simd(block, &state);
@@ -360,20 +360,20 @@ fn encrypt_cbc(input: &[[u8; 16]], out: &mut [[u8; 16]], iv: &[u8; 16], aes: imp
 /// Perform AES encryption
 pub fn encrypt(
     input: impl AsRef<[u8]>,
-    key: impl AesKeySchedule,
+    key: &impl AesKeySchedule,
     iv: Option<&[u8; 16]>,
     mode: Mode,
 ) -> Vec<u8> {
     let mut out = input.as_ref().to_vec();
     match mode {
         Mode::ECB => encrypt_ecb(
-            cast_as_array(input.as_ref()),
-            cast_as_array_mut(&mut out[..]),
+            cast_as_arrays(input.as_ref()),
+            cast_as_arrays_mut(&mut out[..]),
             key,
         ),
         Mode::CBC => encrypt_cbc(
-            cast_as_array(input.as_ref()),
-            cast_as_array_mut(&mut out[..]),
+            cast_as_arrays(input.as_ref()),
+            cast_as_arrays_mut(&mut out[..]),
             iv.expect("CBC mode requires an IV."),
             key,
         ),
@@ -383,14 +383,14 @@ pub fn encrypt(
 }
 
 /// Perform decryption using AES ECB mode
-fn decrypt_ecb(input: &[[u8; 16]], out: &mut [[u8; 16]], aes: impl Aes) {
+fn decrypt_ecb(input: &[[u8; 16]], out: &mut [[u8; 16]], aes: &impl Aes) {
     for (block, out_block) in input.iter().zip(out.iter_mut()) {
         aes.decrypt_block(block, out_block);
     }
 }
 
 /// Perform decryption using AES CBC mode
-fn decrypt_cbc(input: &[[u8; 16]], out: &mut [[u8; 16]], iv: &[u8; 16], aes: impl Aes) {
+fn decrypt_cbc(input: &[[u8; 16]], out: &mut [[u8; 16]], iv: &[u8; 16], aes: &impl Aes) {
     let mut state = *iv;
     for (block, out_block) in input.iter().zip(out.iter_mut()) {
         aes.decrypt_block(block, out_block);
@@ -403,20 +403,20 @@ fn decrypt_cbc(input: &[[u8; 16]], out: &mut [[u8; 16]], iv: &[u8; 16], aes: imp
 /// Panics: if mode == CBC and iv.is_none()
 pub fn decrypt(
     input: impl AsRef<[u8]>,
-    key: impl AesKeySchedule,
+    key: &impl AesKeySchedule,
     iv: Option<&[u8; 16]>,
     mode: Mode,
 ) -> Vec<u8> {
     let mut out = input.as_ref().to_vec();
     match mode {
         Mode::ECB => decrypt_ecb(
-            cast_as_array(input.as_ref()),
-            cast_as_array_mut(&mut out[..]),
+            cast_as_arrays(input.as_ref()),
+            cast_as_arrays_mut(&mut out[..]),
             key,
         ),
         Mode::CBC => decrypt_cbc(
-            cast_as_array(input.as_ref()),
-            cast_as_array_mut(&mut out[..]),
+            cast_as_arrays(input.as_ref()),
+            cast_as_arrays_mut(&mut out[..]),
             iv.expect("CBC mode requires an IV."),
             key,
         ),
@@ -430,13 +430,14 @@ pub fn decrypt(
 mod nist_tests {
     use super::*;
     use crate::encoding::Decodable;
-    use crate::util::cast_as_array;
+    use crate::util::{cast_as_array, cast_as_arrays};
 
     #[test]
     fn test_aes_128_ecb_encryption() {
         // NIST test vector F.1.1
-        let key = "2b7e151628aed2a6abf7158809cf4f3c".decode_hex().unwrap();
-        let key = Aes128::new(&cast_as_array(&key[..])[0]);
+        let key = Aes128::new(cast_as_array(
+            &"2b7e151628aed2a6abf7158809cf4f3c".decode_hex().unwrap(),
+        ));
 
         let input = "6bc1bee22e409f96e93d7e117393172a\
                      ae2d8a571e03ac9c9eb76fac45af8e51\
@@ -451,7 +452,7 @@ mod nist_tests {
             .decode_hex()
             .unwrap();
 
-        let output = encrypt(input, key, None, Mode::ECB);
+        let output = encrypt(input, &key, None, Mode::ECB);
         assert_eq!(output, correct_output);
     }
 
@@ -459,7 +460,7 @@ mod nist_tests {
     fn test_aes_128_ecb_decryption() {
         // NIST test vector F.1.2
         let key = "2b7e151628aed2a6abf7158809cf4f3c".decode_hex().unwrap();
-        let key = Aes128::new(&cast_as_array(&key[..])[0]);
+        let key = Aes128::new(&cast_as_arrays(&key[..])[0]);
 
         let input = "3ad77bb40d7a3660a89ecaf32466ef97\
                      f5d3d58503b9699de785895a96fdbaaf\
@@ -474,7 +475,7 @@ mod nist_tests {
             .decode_hex()
             .unwrap();
 
-        let output = decrypt(input, key, None, Mode::ECB);
+        let output = decrypt(input, &key, None, Mode::ECB);
         assert_eq!(output, correct_output);
     }
 
@@ -484,7 +485,7 @@ mod nist_tests {
         let key = "8e73b0f7da0e6452c810f32b809079e562f8ead2522c6b7b"
             .decode_hex()
             .unwrap();
-        let key = Aes192::new(&cast_as_array(&key[..])[0]);
+        let key = Aes192::new(&cast_as_arrays(&key[..])[0]);
 
         let input = "6bc1bee22e409f96e93d7e117393172a\
                      ae2d8a571e03ac9c9eb76fac45af8e51\
@@ -499,7 +500,7 @@ mod nist_tests {
             .decode_hex()
             .unwrap();
 
-        let output = encrypt(input, key, None, Mode::ECB);
+        let output = encrypt(input, &key, None, Mode::ECB);
         assert_eq!(output, correct_output);
     }
 
@@ -509,7 +510,7 @@ mod nist_tests {
         let key = "8e73b0f7da0e6452c810f32b809079e562f8ead2522c6b7b"
             .decode_hex()
             .unwrap();
-        let key = Aes192::new(&cast_as_array(&key[..])[0]);
+        let key = Aes192::new(&cast_as_arrays(&key[..])[0]);
 
         let input = "bd334f1d6e45f25ff712a214571fa5cc\
                      974104846d0ad3ad7734ecb3ecee4eef\
@@ -524,7 +525,7 @@ mod nist_tests {
             .decode_hex()
             .unwrap();
 
-        let output = decrypt(input, key, None, Mode::ECB);
+        let output = decrypt(input, &key, None, Mode::ECB);
         assert_eq!(output, correct_output);
     }
 
@@ -534,7 +535,7 @@ mod nist_tests {
         let key = "603deb1015ca71be2b73aef0857d77811f352c073b6108d72d9810a30914dff4"
             .decode_hex()
             .unwrap();
-        let key = Aes256::new(&cast_as_array(&key[..])[0]);
+        let key = Aes256::new(&cast_as_arrays(&key[..])[0]);
 
         let input = "6bc1bee22e409f96e93d7e117393172a\
                      ae2d8a571e03ac9c9eb76fac45af8e51\
@@ -549,7 +550,7 @@ mod nist_tests {
             .decode_hex()
             .unwrap();
 
-        let output = encrypt(input, key, None, Mode::ECB);
+        let output = encrypt(input, &key, None, Mode::ECB);
         assert_eq!(output, correct_output);
     }
 
@@ -559,7 +560,7 @@ mod nist_tests {
         let key = "603deb1015ca71be2b73aef0857d77811f352c073b6108d72d9810a30914dff4"
             .decode_hex()
             .unwrap();
-        let key = Aes256::new(&cast_as_array(&key[..])[0]);
+        let key = Aes256::new(&cast_as_arrays(&key[..])[0]);
 
         let input = "f3eed1bdb5d2a03c064b5a7e3db181f8\
                      591ccb10d410ed26dc5ba74a31362870\
@@ -574,7 +575,7 @@ mod nist_tests {
             .decode_hex()
             .unwrap();
 
-        let output = decrypt(input, key, None, Mode::ECB);
+        let output = decrypt(input, &key, None, Mode::ECB);
         assert_eq!(output, correct_output);
     }
 
@@ -582,7 +583,7 @@ mod nist_tests {
     fn test_aes_128_cbc_encryption() {
         // NIST test vector F.2.1
         let key = "2b7e151628aed2a6abf7158809cf4f3c".decode_hex().unwrap();
-        let key = Aes128::new(&cast_as_array(&key[..])[0]);
+        let key = Aes128::new(&cast_as_arrays(&key[..])[0]);
         let iv: [u8; 16] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
 
         let input = "6bc1bee22e409f96e93d7e117393172a\
@@ -598,7 +599,7 @@ mod nist_tests {
             .decode_hex()
             .unwrap();
 
-        let output = encrypt(input, key, Some(&iv), Mode::CBC);
+        let output = encrypt(input, &key, Some(&iv), Mode::CBC);
         assert_eq!(output, correct_output);
     }
 
@@ -606,7 +607,7 @@ mod nist_tests {
     fn test_aes_128_cbc_decryption() {
         // NIST test vector F.2.2
         let key = "2b7e151628aed2a6abf7158809cf4f3c".decode_hex().unwrap();
-        let key = Aes128::new(&cast_as_array(&key[..])[0]);
+        let key = Aes128::new(&cast_as_arrays(&key[..])[0]);
         let iv: [u8; 16] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
 
         let input = "7649abac8119b246cee98e9b12e9197d\
@@ -622,7 +623,7 @@ mod nist_tests {
             .decode_hex()
             .unwrap();
 
-        let output = decrypt(input, key, Some(&iv), Mode::CBC);
+        let output = decrypt(input, &key, Some(&iv), Mode::CBC);
         assert_eq!(output, correct_output);
     }
 
@@ -632,7 +633,7 @@ mod nist_tests {
         let key = "8e73b0f7da0e6452c810f32b809079e562f8ead2522c6b7b"
             .decode_hex()
             .unwrap();
-        let key = Aes192::new(&cast_as_array(&key[..])[0]);
+        let key = Aes192::new(&cast_as_arrays(&key[..])[0]);
         let iv: [u8; 16] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
 
         let input = "6bc1bee22e409f96e93d7e117393172a\
@@ -648,7 +649,7 @@ mod nist_tests {
             .decode_hex()
             .unwrap();
 
-        let output = encrypt(input, key, Some(&iv), Mode::CBC);
+        let output = encrypt(input, &key, Some(&iv), Mode::CBC);
         assert_eq!(output, correct_output);
     }
 
@@ -658,7 +659,7 @@ mod nist_tests {
         let key = "8e73b0f7da0e6452c810f32b809079e562f8ead2522c6b7b"
             .decode_hex()
             .unwrap();
-        let key = Aes192::new(&cast_as_array(&key[..])[0]);
+        let key = Aes192::new(&cast_as_arrays(&key[..])[0]);
         let iv: [u8; 16] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
 
         let correct_output = "6bc1bee22e409f96e93d7e117393172a\
@@ -674,7 +675,7 @@ mod nist_tests {
             .decode_hex()
             .unwrap();
 
-        let output = decrypt(input, key, Some(&iv), Mode::CBC);
+        let output = decrypt(input, &key, Some(&iv), Mode::CBC);
         assert_eq!(output, correct_output);
     }
 
@@ -684,7 +685,7 @@ mod nist_tests {
         let key = "603deb1015ca71be2b73aef0857d77811f352c073b6108d72d9810a30914dff4"
             .decode_hex()
             .unwrap();
-        let key = Aes256::new(&cast_as_array(&key[..])[0]);
+        let key = Aes256::new(&cast_as_arrays(&key[..])[0]);
         let iv: [u8; 16] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
 
         let input = "6bc1bee22e409f96e93d7e117393172a\
@@ -700,7 +701,7 @@ mod nist_tests {
             .decode_hex()
             .unwrap();
 
-        let output = encrypt(input, key, Some(&iv), Mode::CBC);
+        let output = encrypt(input, &key, Some(&iv), Mode::CBC);
         assert_eq!(output, correct_output);
     }
 
@@ -710,7 +711,7 @@ mod nist_tests {
         let key = "603deb1015ca71be2b73aef0857d77811f352c073b6108d72d9810a30914dff4"
             .decode_hex()
             .unwrap();
-        let key = Aes256::new(&cast_as_array(&key[..])[0]);
+        let key = Aes256::new(&cast_as_arrays(&key[..])[0]);
         let iv: [u8; 16] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
 
         let correct_output = "6bc1bee22e409f96e93d7e117393172a\
@@ -726,7 +727,7 @@ mod nist_tests {
             .decode_hex()
             .unwrap();
 
-        let output = decrypt(input, key, Some(&iv), Mode::CBC);
+        let output = decrypt(input, &key, Some(&iv), Mode::CBC);
         assert_eq!(output, correct_output);
     }
 }
