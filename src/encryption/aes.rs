@@ -320,23 +320,23 @@ where
     T: AesKeySchedule,
 {
     fn encrypt_block(&self, block: &[u8; 16], out_block: &mut [u8; 16]) {
-        let mut t = unsafe { _mm_loadu_si128(block as *const u8 as *const _) };
+        let mut t = unsafe { _mm_loadu_si128(block.as_ptr() as *const _) };
         t = unsafe { _mm_xor_si128(t, self.round_key(0)) };
         for round in 1..T::ROUNDS {
             t = unsafe { _mm_aesenc_si128(t, self.round_key(round)) };
         }
         t = unsafe { _mm_aesenclast_si128(t, self.round_key(T::ROUNDS)) };
-        unsafe { _mm_storeu_si128(out_block as *mut u8 as *mut _, t) };
+        unsafe { _mm_storeu_si128(out_block.as_mut_ptr() as *mut _, t) };
     }
 
     fn decrypt_block(&self, block: &[u8; 16], out_block: &mut [u8; 16]) {
-        let mut t = unsafe { _mm_loadu_si128(block as *const u8 as *const _) };
+        let mut t = unsafe { _mm_loadu_si128(block.as_ptr() as *const _) };
         t = unsafe { _mm_xor_si128(t, self.round_key(T::ROUNDS)) };
         for round in (1..T::ROUNDS).rev() {
             t = unsafe { _mm_aesdec_si128(t, _mm_aesimc_si128(self.round_key(round))) };
         }
         t = unsafe { _mm_aesdeclast_si128(t, self.round_key(0)) };
-        unsafe { _mm_storeu_si128(out_block as *mut u8 as *mut _, t) };
+        unsafe { _mm_storeu_si128(out_block.as_mut_ptr() as *mut _, t) };
     }
 }
 
@@ -374,7 +374,7 @@ pub fn encrypt(
         Mode::CBC => encrypt_cbc(
             cast_as_arrays(input.as_ref()),
             cast_as_arrays_mut(&mut out[..]),
-            iv.expect("CBC mode requires an IV."),
+            iv.unwrap_or(&[0u8; 16]),
             key,
         ),
         Mode::OFB | Mode::CFB | Mode::CTR => unimplemented!(),

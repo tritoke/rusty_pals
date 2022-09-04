@@ -137,7 +137,6 @@ pub fn xor_with_key_into(
 /// let xorred = unsafe { xor_block_simd(&block_1, &block_2) };
 /// assert_eq!(xorred, [15; 16])
 /// ```
-#[cfg(target_feature = "sse2")]
 pub fn xor_block_simd(a: &[u8; 16], b: &[u8; 16]) -> [u8; 16] {
     // SAFETY: unaligned load MUST be used here
     unsafe {
@@ -158,7 +157,6 @@ pub fn xor_block_simd(a: &[u8; 16], b: &[u8; 16]) -> [u8; 16] {
 /// unsafe { xor_block_simd_into(&block_1, &mut block_2) };
 /// assert_eq!(block_2, [15; 16])
 /// ```
-#[cfg(target_feature = "sse2")]
 pub fn xor_block_simd_into(a: &[u8; 16], b: &mut [u8; 16]) {
     unsafe {
         // SAFETY: unaligned load MUST be used here
