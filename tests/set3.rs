@@ -150,3 +150,43 @@ fn challenge18() -> Result<()> {
 
     Ok(())
 }
+
+mod chall19 {
+    use anyhow::Result;
+    use rusty_pals::encoding::{Decodable, Encodable};
+    use rusty_pals::encryption::aes::{encrypt, Aes128, Iv, Mode};
+    use rusty_pals::rand::XorShift32;
+    use rusty_pals::xor::xor_blocks;
+
+    #[test]
+    fn challenge19() -> Result<()> {
+        let key = Aes128::new(&XorShift32::new(42).gen_array());
+
+        let true_pts: Vec<Vec<u8>> = include_str!("files/19.txt")
+            .lines()
+            .map(|line| line.decode_b64())
+            .collect::<Result<_>>()?;
+
+        // generate the ciphertexts
+        let cts: Vec<Vec<u8>> = true_pts
+            .iter()
+            .map(|pt| Ok(encrypt(pt, &key, Iv::Nonce(0), Mode::CTR)))
+            .collect::<Result<_>>()?;
+
+        let ct_refs: Vec<&[u8]> = cts.iter().map(AsRef::as_ref).collect();
+        let pts = attack(ct_refs.as_ref())?;
+
+        assert_eq!(pts, true_pts);
+
+        Ok(())
+    }
+
+    fn attack(cts: &[&[u8]]) -> Result<Vec<Vec<u8>>> {
+        for (&ct1, &ct2) in cts.iter().zip(cts.iter().skip(1)) {
+            let cl = usize::min(ct1.len(), ct2.len());
+            let xorred = xor_blocks(&ct1[..cl], &ct2[..cl])?;
+            dbg!(xorred.encode_hex());
+        }
+        todo!()
+    }
+}
