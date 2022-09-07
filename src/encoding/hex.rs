@@ -1,4 +1,4 @@
-use color_eyre::eyre::{ensure, eyre, Result};
+use anyhow::{ensure, anyhow, Result};
 
 /// Parse an input string as encoding
 /// ```
@@ -36,7 +36,7 @@ fn h2b(b: u8) -> Result<u8> {
         b'0'..=b'9' => Ok(b - b'0'),
         b'A'..=b'F' => Ok(b - b'A' + 10),
         b'a'..=b'f' => Ok(b - b'a' + 10),
-        x => Err(eyre!(
+        x => Err(anyhow!(
             "Unrecognised encoding character {x:?} - {:?}",
             x as char
         )),

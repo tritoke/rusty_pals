@@ -1,6 +1,6 @@
 #![feature(array_chunks)]
 
-use color_eyre::eyre::{eyre, Result};
+use anyhow::{anyhow, Result};
 
 use rusty_pals::encoding::*;
 use rusty_pals::encryption::aes::*;
@@ -127,7 +127,7 @@ fn challenge8() -> Result<()> {
             let unique_blocks: HashSet<_> = line.array_chunks::<16>().collect();
             unique_blocks.len() != (line.len() / 16)
         })
-        .ok_or_else(|| eyre!("Couldn't find line with duplicate blocks."))?;
+        .ok_or_else(|| anyhow!("Couldn't find line with duplicate blocks."))?;
 
     assert_eq!(prob_ecb, &lines[132]);
 

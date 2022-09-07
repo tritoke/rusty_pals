@@ -1,4 +1,4 @@
-use color_eyre::eyre::{ensure, eyre, Result};
+use anyhow::{anyhow, ensure, Result};
 
 /// Implement the PKCS#7 padding scheme
 pub fn pkcs7(data: impl AsRef<[u8]>, block_length: u8) -> Vec<u8> {
@@ -19,11 +19,11 @@ pub fn pkcs7_into(data: &mut Vec<u8>, block_length: u8) {
 pub fn pkcs7_unpad(data: &[u8]) -> Result<&[u8]> {
     let pad = *data
         .last()
-        .ok_or_else(|| eyre!("Cannot unpad empty data."))?;
+        .ok_or_else(|| anyhow!("Cannot unpad empty data."))?;
     ensure!(data.len() >= pad as usize, "Not enough data to unpad.");
     ensure!(
-        data[data.len() - pad as usize..].iter().all(|&x| x == pad),
-        "Invalid characters in padding."
+        pad != 0 && data[data.len() - pad as usize..].iter().all(|&x| x == pad),
+        "Invalid padding."
     );
     Ok(&data[0..data.len() - pad as usize])
 }
@@ -32,11 +32,11 @@ pub fn pkcs7_unpad(data: &[u8]) -> Result<&[u8]> {
 pub fn pkcs7_unpad_owned(data: &mut Vec<u8>) -> Result<()> {
     let pad = *data
         .last()
-        .ok_or_else(|| eyre!("Cannot unpad empty data."))?;
+        .ok_or_else(|| anyhow!("Cannot unpad empty data."))?;
     ensure!(data.len() >= pad as usize, "Not enough data to unpad.");
     ensure!(
-        data[data.len() - pad as usize..].iter().all(|&x| x == pad),
-        "Invalid characters in padding."
+        pad != 0 && data[data.len() - pad as usize..].iter().all(|&x| x == pad),
+        "Invalid padding."
     );
     data.truncate(data.len() - pad as usize);
     Ok(())
@@ -112,6 +112,11 @@ mod tests {
     }
 
     #[test]
+    fn test_pkcs7_unpad_zero_pad_fails() {
+        assert!(pkcs7_unpad(b"YELLOW SUBMARINE\x00").is_err());
+    }
+
+    #[test]
     fn test_pkcs7_unpad_owned() {
         let mut data = b"YELLOW SUBMARINE\x04\x04\x04\x04".to_vec();
         pkcs7_unpad_owned(&mut data).unwrap();
@@ -134,18 +139,21 @@ mod tests {
         assert_eq!(data, b"YELLOW SUBMARINE");
     }
 
-    #[should_panic]
+    #[test]
+    fn test_pkcs7_unpad_owned_zero_pad_fails() {
+        let mut data = b"YELLOW SUBMARINE\x00".to_vec();
+        assert!(pkcs7_unpad_owned(&mut data).is_err());
+    }
+
     #[test]
     fn test_pkcs7_unpad_fails_invalid_padding() {
         let padded = pkcs7_unpad(b"YELLOW SUBMARINE\x01\x02\x03\x04");
-        assert_eq!(padded.unwrap(), b"YELLOW SUBMARINE");
+        assert!(padded.is_err());
     }
 
-    #[should_panic]
     #[test]
     fn test_pkcs7_unpad_owned_fails_invalid_padding() {
         let mut data = b"YELLOW SUBMARINE\x01\x02\x03\x04".to_vec();
-        pkcs7_unpad_owned(&mut data).unwrap();
-        assert_eq!(data, b"YELLOW SUBMARINE");
+        assert!(pkcs7_unpad_owned(&mut data).is_err());
     }
 }

@@ -1,14 +1,12 @@
-use color_eyre::eyre::{ensure, Result};
-
 #[derive(Debug, Copy, Clone)]
 pub struct XorShift32 {
     state: u32,
 }
 
 impl XorShift32 {
-    pub fn new(seed: u32) -> Result<Self> {
-        ensure!(seed != 0, "Zero seed is silly.");
-        Ok(Self { state: seed })
+    pub fn new(seed: u32) -> Self {
+        assert!(seed != 0, "XorShift32 cannot be seeded with zero.");
+        Self { state: seed }
     }
 
     pub fn gen(&mut self) -> u32 {
@@ -48,20 +46,21 @@ mod test {
     use super::*;
 
     #[test]
+    #[should_panic]
     fn test_zero_seed_fails() {
-        assert!(XorShift32::new(0).is_err());
+        XorShift32::new(0);
     }
 
     #[test]
     fn test_bytegen() {
-        let mut rng = XorShift32::new(42).unwrap();
+        let mut rng = XorShift32::new(42);
         let a = rng.gen();
         let b = rng.gen();
         let [b1, b2, b3, b4] = a.to_le_bytes();
         let [b5, b6, b7, b8] = b.to_le_bytes();
 
         let correct = vec![b1, b2, b3, b4, b5, b6, b7, b8];
-        let gen: Vec<u8> = XorShift32::new(42).unwrap().gen_bytes(8);
+        let gen: Vec<u8> = XorShift32::new(42).gen_bytes(8);
 
         assert_eq!(gen, correct);
     }

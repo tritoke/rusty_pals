@@ -1,4 +1,4 @@
-use color_eyre::eyre::Result;
+use anyhow::Result;
 use rusty_pals::encoding::Decodable;
 use rusty_pals::encryption::{
     aes::{decrypt, Aes128, Mode},
@@ -29,7 +29,7 @@ fn challenge10() -> Result<()> {
 }
 
 mod chal11 {
-    use color_eyre::Result;
+    use anyhow::Result;
     use rusty_pals::encryption::{
         aes::{encrypt, Aes, Aes128, Mode},
         pad,
@@ -70,7 +70,7 @@ mod chal11 {
     fn challenge11() -> Result<()> {
         let mut count_correct = 0;
         let num_rounds = 10000;
-        let mut rng = XorShift32::new(42)?;
+        let mut rng = XorShift32::new(42);
         for _ in 0..num_rounds {
             let (is_ecb, encrypted) = encryption_oracle(&mut rng, "A".repeat(43))?;
             let is_ecb_guess = detect_mode(encrypted);
@@ -84,7 +84,7 @@ mod chal11 {
 }
 
 mod chal12 {
-    use color_eyre::eyre::{ensure, eyre, Result};
+    use anyhow::{anyhow, ensure, Result};
     use rusty_pals::encoding::Decodable;
     use rusty_pals::encryption::aes::{encrypt, Aes, Aes128, Mode};
     use rusty_pals::encryption::oracle::EncryptionOracle;
@@ -95,7 +95,7 @@ mod chal12 {
 
     #[test]
     fn challenge12() -> Result<()> {
-        let mut rng = XorShift32::new(42)?;
+        let mut rng = XorShift32::new(42);
         let oracle = EcbOracle::new(&mut rng)?;
 
         let decoded = attack(oracle)?;
@@ -145,7 +145,7 @@ mod chal12 {
         let block = &enc[..block_size];
         let decoded = prefix_mapper
             .get(block)
-            .ok_or_else(|| eyre!("Failed to recover byte from secret."))?;
+            .ok_or_else(|| anyhow!("Failed to recover byte from secret."))?;
 
         // Step 6: Repeat :)
         let mut dec = vec![decoded];
@@ -248,7 +248,7 @@ mod chal12 {
 }
 
 mod chal13 {
-    use color_eyre::eyre::{bail, eyre, Error, Result};
+    use anyhow::{anyhow, bail, Error, Result};
     use rusty_pals::encoding::Encodable;
     use rusty_pals::encryption::aes::{decrypt, encrypt, Aes, Aes128, Mode};
     use rusty_pals::encryption::pad::{pkcs7_into, pkcs7_unpad_owned};
@@ -391,7 +391,7 @@ mod chal13 {
 
     #[test]
     fn challenge13() -> Result<()> {
-        let mut rng = XorShift32::new(1234567890)?;
+        let mut rng = XorShift32::new(1234567890);
         let mut profile_manager = ProfileManager::new(&mut rng);
 
         let enc_profile = attack(&mut profile_manager)?;
@@ -410,7 +410,7 @@ mod chal13 {
         // Step 2: find the position where we can encrypt a block of 16 characters
         let input_start = &plaintext
             .find("email=")
-            .ok_or_else(|| eyre!("Plaintext didn't contain email=, unable to find position"))?
+            .ok_or_else(|| anyhow!("Plaintext didn't contain email=, unable to find position"))?
             + "email=".len();
         let padding = if input_start % Aes128::BLOCK_SIZE != 0 {
             Aes128::BLOCK_SIZE - (input_start % Aes128::BLOCK_SIZE)
@@ -433,7 +433,7 @@ mod chal13 {
         // Step 4: construct a messsage padded such that role= lies just before a chunk boundary
         let user_pos = &plaintext
             .find("user")
-            .ok_or_else(|| eyre!("Plaintext didn't contain \"user\", unable to find position"))?;
+            .ok_or_else(|| anyhow!("Plaintext didn't contain \"user\", unable to find position"))?;
         let padding = Aes128::BLOCK_SIZE - (user_pos % Aes128::BLOCK_SIZE);
         let mut enc = pm.encrypt_profile("A".repeat(padding));
 
@@ -447,7 +447,7 @@ mod chal13 {
 
 mod chal14 {
     use super::chal12::PrefixMapper;
-    use color_eyre::eyre::{ensure, eyre, Result};
+    use anyhow::{anyhow, ensure, Result};
     use rusty_pals::encoding::Decodable;
     use rusty_pals::encryption::{
         aes::{encrypt, Aes, Aes128, Mode},
@@ -524,7 +524,7 @@ mod chal14 {
 
     #[test]
     fn challenge14() -> Result<()> {
-        let mut rng = XorShift32::new(42)?;
+        let mut rng = XorShift32::new(42);
         let oracle = EcbOracle::new(&mut rng)?;
 
         let decoded = attack(oracle)?;
@@ -599,7 +599,7 @@ mod chal14 {
         let block = &enc[..block_size];
         let decoded = prefix_mapper
             .get(block)
-            .ok_or_else(|| eyre!("Failed to recover byte from secret."))?;
+            .ok_or_else(|| anyhow!("Failed to recover byte from secret."))?;
 
         // Step 6: Repeat :)
         let mut dec = vec![decoded];
@@ -635,7 +635,7 @@ fn challenge15() {
 }
 
 mod chall16 {
-    use color_eyre::eyre::Result;
+    use anyhow::Result;
     use rusty_pals::encryption::{
         aes::{decrypt, encrypt, Aes, Aes128, Mode},
         pad,
@@ -690,7 +690,7 @@ mod chall16 {
 
     #[test]
     fn test_correct_output_forbidden() -> Result<()> {
-        let mut rng = XorShift32::new(42)?;
+        let mut rng = XorShift32::new(42);
         let mut chall = Challenge::new(&mut rng);
         let enc = chall.encrypt(";admin=true;");
         assert!(!chall.decrypt(enc));
@@ -700,7 +700,7 @@ mod chall16 {
 
     #[test]
     fn challenge16() -> Result<()> {
-        let mut rng = XorShift32::new(42)?;
+        let mut rng = XorShift32::new(42);
         let mut chall = Challenge::new(&mut rng);
 
         let manipulated = attack(&mut chall);

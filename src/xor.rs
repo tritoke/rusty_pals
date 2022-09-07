@@ -1,5 +1,5 @@
 use crate::fit::{edit_distance, score_text};
-use color_eyre::eyre::{ensure, eyre, Result};
+use anyhow::{ensure, anyhow, Result};
 use std::arch::x86_64::{_mm_loadu_si128, _mm_storeu_si128, _mm_xor_si128};
 use std::ops::RangeInclusive;
 
@@ -196,10 +196,10 @@ pub fn break_repeating_key_xor<const AVERAGE_BLOCKS: usize>(
     for key_size in key_range {
         let block1 = data
             .get(..key_size * AVERAGE_BLOCKS)
-            .ok_or_else(|| eyre!("input data too small"))?;
+            .ok_or_else(|| anyhow!("input data too small"))?;
         let block2 = data
             .get(key_size * AVERAGE_BLOCKS..key_size * AVERAGE_BLOCKS * 2)
-            .ok_or_else(|| eyre!("input data too small"))?;
+            .ok_or_else(|| anyhow!("input data too small"))?;
         let norm = edit_distance(block1, block2) as f64 / key_size as f64;
         if norm < min_norm {
             min_norm = norm;

@@ -1,5 +1,5 @@
 #![allow(clippy::erasing_op)]
-use color_eyre::eyre::{eyre, Result};
+use anyhow::{anyhow, Result};
 
 /// Base64 Alphabet from RFC4648
 const TABLE: [u8; 64] = *b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -95,7 +95,7 @@ fn to_sextet(c: u8) -> Result<u8> {
         b'/' => Ok(63),
         // treat pad character as zero
         b'=' => Ok(0),
-        x => Err(eyre!("Invalid base64 character '{}' - {x}.", x as char)),
+        x => Err(anyhow!("Invalid base64 character '{}' - {x}.", x as char)),
     }
 }
 
