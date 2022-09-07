@@ -1,5 +1,8 @@
+use anyhow::Result;
+use rusty_pals::encoding::Decodable;
+use rusty_pals::encryption::aes::{decrypt, Aes128, Mode};
+
 mod chal17 {
-    use rusty_pals::encoding::Encodable;
     use rusty_pals::encryption::{
         aes::{decrypt, encrypt, Aes, Aes128, Mode},
         pad,
@@ -32,13 +35,13 @@ mod chal17 {
             pad::pkcs7_into(&mut data, Aes128::BLOCK_SIZE as u8);
             let iv = self.rng.gen_array();
             let mut out = iv.to_vec();
-            out.extend_from_slice(&encrypt(&data, &self.key, Some(&iv), Mode::CBC));
+            out.extend_from_slice(&encrypt(&data, &self.key, iv, Mode::CBC));
             out
         }
 
         fn is_padding_valid(&self, ct: &[u8]) -> bool {
             let (iv, ct) = ct.split_at(Aes128::BLOCK_SIZE);
-            let mut dec = decrypt(ct, &self.key, Some(cast_as_array(iv)), Mode::CBC);
+            let mut dec = decrypt(ct, &self.key, *cast_as_array(iv), Mode::CBC);
             pad::pkcs7_unpad_owned(&mut dec).is_ok()
         }
     }
@@ -51,7 +54,7 @@ mod chal17 {
         let (ct, pt) = attack(&mut chall);
 
         let (iv, ct) = ct.split_at(Aes128::BLOCK_SIZE);
-        let mut pt_correct = decrypt(ct, &chall.key, Some(cast_as_array(iv)), Mode::CBC);
+        let mut pt_correct = decrypt(ct, &chall.key, *cast_as_array(iv), Mode::CBC);
         pad::pkcs7_unpad_owned(&mut pt_correct).unwrap();
         assert_eq!(pt, pt_correct);
     }
@@ -134,4 +137,16 @@ mod chal17 {
     }
 }
 
-panic!();
+#[test]
+fn challenge18() -> Result<()> {
+    let enc =
+        "L77na/nrFsKvynd6HzOoG7GHTLXsTVu9qvY/2syLXzhPweyyMTJULu/6/kXX0KSvoOLSFQ==".decode_b64()?;
+
+    let key = Aes128::new(b"YELLOW SUBMARINE");
+    let dec = decrypt(&enc, &key, 0, Mode::CTR);
+
+    assert_eq!(dec.len(), enc.len());
+    assert_eq!(dec, b"Yo, VIP Let's kick it Ice, Ice, baby Ice, Ice, baby ");
+
+    Ok(())
+}

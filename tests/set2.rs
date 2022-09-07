@@ -21,7 +21,7 @@ fn challenge10() -> Result<()> {
     let data = input.decode_b64()?;
     let key = Aes128::new(b"YELLOW SUBMARINE");
     let iv = [0u8; 16];
-    let mut dec = decrypt(&data, &key, Some(&iv), Mode::CBC);
+    let mut dec = decrypt(&data, &key, iv, Mode::CBC);
     pad::pkcs7_unpad_owned(&mut dec)?;
     assert_eq!(dec, include_bytes!("files/10_correct.txt"));
 
@@ -30,6 +30,7 @@ fn challenge10() -> Result<()> {
 
 mod chal11 {
     use anyhow::Result;
+    use rusty_pals::encryption::aes::Iv;
     use rusty_pals::encryption::{
         aes::{encrypt, Aes, Aes128, Mode},
         pad,
@@ -48,10 +49,10 @@ mod chal11 {
         let key = Aes128::new(&rng.gen_array());
         let gen_ecb = rng.gen_bool();
         let enc = if gen_ecb {
-            encrypt(&data, &key, None, Mode::ECB)
+            encrypt(&data, &key, Iv::Empty, Mode::ECB)
         } else {
             let iv = rng.gen_array();
-            encrypt(&data, &key, Some(&iv), Mode::CBC)
+            encrypt(&data, &key, iv, Mode::CBC)
         };
 
         Ok((gen_ecb, enc))
@@ -86,7 +87,7 @@ mod chal11 {
 mod chal12 {
     use anyhow::{anyhow, ensure, Result};
     use rusty_pals::encoding::Decodable;
-    use rusty_pals::encryption::aes::{encrypt, Aes, Aes128, Mode};
+    use rusty_pals::encryption::aes::{encrypt, Aes, Aes128, Iv, Mode};
     use rusty_pals::encryption::oracle::EncryptionOracle;
     use rusty_pals::encryption::pad;
     use rusty_pals::rand::XorShift32;
@@ -198,7 +199,7 @@ mod chal12 {
             pad::pkcs7_into(&mut data, Aes128::BLOCK_SIZE as u8);
 
             // Construct ECB(your-string || unknown-string, random-key)
-            encrypt(data, &self.key, None, Mode::ECB)
+            encrypt(data, &self.key, Iv::Empty, Mode::ECB)
         }
     }
 
@@ -250,7 +251,7 @@ mod chal12 {
 mod chal13 {
     use anyhow::{anyhow, bail, Error, Result};
     use rusty_pals::encoding::Encodable;
-    use rusty_pals::encryption::aes::{decrypt, encrypt, Aes, Aes128, Mode};
+    use rusty_pals::encryption::aes::{decrypt, encrypt, Aes, Aes128, Iv, Mode};
     use rusty_pals::encryption::pad::{pkcs7_into, pkcs7_unpad_owned};
     use rusty_pals::rand::XorShift32;
     use std::fmt;
@@ -377,11 +378,11 @@ mod chal13 {
         fn encrypt_profile(&self, email: impl AsRef<str>) -> Vec<u8> {
             let mut data = profile_for(email.as_ref()).into_bytes();
             pkcs7_into(&mut data, Aes128::BLOCK_SIZE as u8);
-            encrypt(data, &self.key, None, Mode::ECB)
+            encrypt(data, &self.key, Iv::Empty, Mode::ECB)
         }
 
         fn decrypt_profile(&self, data: Vec<u8>) -> Result<CookieJar> {
-            let mut dec = decrypt(data, &self.key, None, Mode::ECB);
+            let mut dec = decrypt(data, &self.key, Iv::Empty, Mode::ECB);
             std::str::from_utf8(&dec)?;
             pkcs7_unpad_owned(&mut dec)?;
             let profile = String::from_utf8(dec)?;
@@ -449,6 +450,7 @@ mod chal14 {
     use super::chal12::PrefixMapper;
     use anyhow::{anyhow, ensure, Result};
     use rusty_pals::encoding::Decodable;
+    use rusty_pals::encryption::aes::Iv;
     use rusty_pals::encryption::{
         aes::{encrypt, Aes, Aes128, Mode},
         oracle::EncryptionOracle,
@@ -492,7 +494,7 @@ mod chal14 {
             pad::pkcs7_into(&mut data, Aes128::BLOCK_SIZE as u8);
 
             // Construct ECB(random-prefix || attacker-controlled || target-bytes, random-key)
-            encrypt(data, &self.key, None, Mode::ECB)
+            encrypt(data, &self.key, Iv::Empty, Mode::ECB)
         }
     }
 
@@ -670,14 +672,14 @@ mod chall16 {
             pad::pkcs7_into(&mut s, Aes128::BLOCK_SIZE as u8);
             let iv = self.rng.gen_array();
             let mut enc = iv.to_vec();
-            enc.extend_from_slice(&encrypt(s, &self.key, Some(&iv), Mode::CBC));
+            enc.extend_from_slice(&encrypt(s, &self.key, iv, Mode::CBC));
             enc
         }
 
         fn decrypt(&self, data: impl AsRef<[u8]>) -> bool {
             let data = data.as_ref();
             let (iv, data) = data.split_at(Aes128::BLOCK_SIZE);
-            let mut dec = decrypt(data, &self.key, Some(cast_as_array(iv)), Mode::CBC);
+            let mut dec = decrypt(data, &self.key, *cast_as_array(iv), Mode::CBC);
             if pad::pkcs7_unpad_owned(&mut dec).is_err() {
                 return false;
             }
