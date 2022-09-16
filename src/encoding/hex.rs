@@ -1,4 +1,5 @@
-use anyhow::{ensure, anyhow, Result};
+use crate::util::try_cast_as_arrays;
+use anyhow::{anyhow, ensure, Result};
 
 /// Parse an input string as encoding
 /// ```
@@ -7,9 +8,8 @@ use anyhow::{ensure, anyhow, Result};
 /// ```
 pub fn parse_hex(input: &str) -> Result<Vec<u8>> {
     ensure!(input.len() % 2 == 0, "Input string must be an even length.");
-    input
-        .as_bytes()
-        .array_chunks()
+    try_cast_as_arrays(input.as_bytes())?
+        .iter()
         .map(|&[h, l]| Ok(h2b(h)? << 4 | h2b(l)?))
         .collect()
 }

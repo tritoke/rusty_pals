@@ -1,5 +1,5 @@
 use crate::fit::{edit_distance, score_text};
-use anyhow::{ensure, anyhow, Result};
+use anyhow::{anyhow, ensure, Result};
 use std::arch::x86_64::{_mm_loadu_si128, _mm_storeu_si128, _mm_xor_si128};
 use std::ops::RangeInclusive;
 
@@ -186,19 +186,20 @@ pub fn break_single_xor(data: &[u8]) -> Result<u8> {
 }
 
 /// Break a repeating key XOR, returns the key
-pub fn break_repeating_key_xor<const AVERAGE_BLOCKS: usize>(
+pub fn break_repeating_key_xor(
     data: impl AsRef<[u8]>,
     key_range: RangeInclusive<usize>,
+    average_blocks: usize,
 ) -> Result<Vec<u8>> {
     let data = data.as_ref();
     let mut min_norm = f64::INFINITY;
     let mut best_key_size = 0;
     for key_size in key_range {
         let block1 = data
-            .get(..key_size * AVERAGE_BLOCKS)
+            .get(..key_size * average_blocks)
             .ok_or_else(|| anyhow!("input data too small"))?;
         let block2 = data
-            .get(key_size * AVERAGE_BLOCKS..key_size * AVERAGE_BLOCKS * 2)
+            .get(key_size * average_blocks..key_size * average_blocks * 2)
             .ok_or_else(|| anyhow!("input data too small"))?;
         let norm = edit_distance(block1, block2) as f64 / key_size as f64;
         if norm < min_norm {

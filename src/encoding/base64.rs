@@ -1,4 +1,5 @@
 #![allow(clippy::erasing_op)]
+use crate::util::try_cast_as_arrays;
 use anyhow::{anyhow, Result};
 
 /// Base64 Alphabet from RFC4648
@@ -55,8 +56,12 @@ pub fn b64decode(input: impl AsRef<[u8]>) -> Result<Vec<u8>> {
     let decoded_len = ((data.len() / 4) * 3) - pad;
     let mut decoded = Vec::with_capacity(decoded_len);
 
-    for block in data.array_chunks() {
-        let [s1, s2, s3, s4] = block.try_map(to_sextet)?;
+    for block in try_cast_as_arrays(data)? {
+        let [b1, b2, b3, b4] = *block;
+        let s1 = to_sextet(b1)?;
+        let s2 = to_sextet(b2)?;
+        let s3 = to_sextet(b3)?;
+        let s4 = to_sextet(b4)?;
 
         // decoded the sextets into a bit block
         let bits: u32 = (s1 as u32) << (3 * 6)

@@ -1,5 +1,3 @@
-#![feature(array_chunks)]
-
 use anyhow::{anyhow, Result};
 
 use rusty_pals::encoding::*;
@@ -8,7 +6,8 @@ use rusty_pals::encryption::pad::*;
 use rusty_pals::fit::*;
 use rusty_pals::xor::*;
 
-use std::collections::HashSet;
+use rusty_pals::util;
+use rusty_pals::util::cast_as_arrays;
 
 #[test]
 fn challenge1() -> Result<()> {
@@ -50,7 +49,7 @@ fn challenge3() -> Result<()> {
 
 #[test]
 fn challenge4() -> Result<()> {
-    const INPUT: &str = include_str!("../files/4.txt");
+    const INPUT: &str = include_str!("files/4.txt");
     let data: Vec<Vec<u8>> = INPUT
         .lines()
         .map(Decodable::decode_hex)
@@ -94,7 +93,7 @@ fn challenge6() -> Result<()> {
     input.retain(|c| c != '\n');
     let data = b64decode(input)?;
 
-    let key = break_repeating_key_xor::<4>(&data, 2..=40)?;
+    let key = break_repeating_key_xor(&data, 2..=40, 4)?;
     assert_eq!(key, b"Terminator X: Bring the noise");
 
     Ok(())
@@ -123,10 +122,7 @@ fn challenge8() -> Result<()> {
 
     let prob_ecb = lines
         .iter()
-        .find(|line| {
-            let unique_blocks: HashSet<_> = line.array_chunks::<16>().collect();
-            unique_blocks.len() != (line.len() / 16)
-        })
+        .find(|line| util::has_duplicate(cast_as_arrays::<_, 16>(line)))
         .ok_or_else(|| anyhow!("Couldn't find line with duplicate blocks."))?;
 
     assert_eq!(prob_ecb, &lines[132]);

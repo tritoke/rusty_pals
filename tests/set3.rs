@@ -1,13 +1,14 @@
 use anyhow::Result;
 use rusty_pals::encoding::Decodable;
 use rusty_pals::encryption::aes::{decrypt, Aes128, Mode};
+use rusty_pals::rand::{Mt19937, Rng32};
 
 mod chal17 {
     use rusty_pals::encryption::{
         aes::{decrypt, encrypt, Aes, Aes128, Mode},
         pad,
     };
-    use rusty_pals::rand::XorShift32;
+    use rusty_pals::rand::{Rng32, XorShift32};
     use rusty_pals::util::cast_as_array;
 
     struct Challenge<'a> {
@@ -48,7 +49,7 @@ mod chal17 {
 
     #[test]
     fn challenge17() {
-        let mut rng = XorShift32::new(1234);
+        let mut rng = XorShift32::from_seed(1234);
 
         let mut chall = Challenge::new(&mut rng);
         let (ct, pt) = attack(&mut chall);
@@ -151,16 +152,18 @@ fn challenge18() -> Result<()> {
     Ok(())
 }
 
+#[allow(unused, unreachable_code)]
 mod chall19 {
     use anyhow::Result;
     use rusty_pals::encoding::{Decodable, Encodable};
     use rusty_pals::encryption::aes::{encrypt, Aes128, Iv, Mode};
-    use rusty_pals::rand::XorShift32;
+    use rusty_pals::rand::{Rng32, XorShift32};
     use rusty_pals::xor::xor_blocks;
 
-    #[test]
+    // I don't like this challenge, it makes me sad
+    // #[test]
     fn challenge19() -> Result<()> {
-        let key = Aes128::new(&XorShift32::new(42).gen_array());
+        let key = Aes128::new(&XorShift32::from_seed(42).gen_array());
 
         let true_pts: Vec<Vec<u8>> = include_str!("files/19.txt")
             .lines()
@@ -188,5 +191,275 @@ mod chall19 {
             dbg!(xorred.encode_hex());
         }
         todo!()
+    }
+}
+
+mod chall20 {
+    use anyhow::{anyhow, Result};
+    use rusty_pals::encoding::Decodable;
+    use rusty_pals::encryption::aes::{encrypt, Aes128, Iv, Mode};
+    use rusty_pals::rand::{Rng32, XorShift32};
+    use rusty_pals::xor::{break_repeating_key_xor, xor_blocks};
+
+    #[test]
+    fn challenge20() -> Result<()> {
+        let key = Aes128::new(&XorShift32::from_seed(42).gen_array());
+
+        let true_pts: Vec<Vec<u8>> = include_str!("files/19.txt")
+            .lines()
+            .map(|line| line.decode_b64())
+            .collect::<Result<_>>()?;
+
+        // generate the ciphertexts
+        let cts: Vec<Vec<u8>> = true_pts
+            .iter()
+            .map(|pt| Ok(encrypt(pt, &key, Iv::Nonce(0), Mode::CTR)))
+            .collect::<Result<_>>()?;
+
+        let ct_refs: Vec<&[u8]> = cts.iter().map(AsRef::as_ref).collect();
+        let pts = attack(ct_refs.as_ref())?;
+
+        for (pt, mut true_pt) in pts.into_iter().zip(true_pts.into_iter()) {
+            // assert the pts are correct up to their length
+            true_pt.truncate(pt.len());
+            let pt = String::from_utf8(pt)?;
+            let true_pt = String::from_utf8(true_pt)?;
+            assert!(pt.eq_ignore_ascii_case(&true_pt));
+        }
+
+        Ok(())
+    }
+
+    fn attack(cts: &[&[u8]]) -> Result<Vec<Vec<u8>>> {
+        let common_length = cts
+            .iter()
+            .map(|x| x.len())
+            .min()
+            .ok_or_else(|| anyhow!("No ciphertexts???"))?;
+
+        let concat_cts: Vec<u8> = cts
+            .iter()
+            .flat_map(|x| &x[..common_length])
+            .copied()
+            .collect();
+        let key = break_repeating_key_xor(concat_cts, common_length..=common_length, 4)?;
+
+        cts.iter()
+            .map(|ct| xor_blocks(&ct[..common_length], &key))
+            .collect()
+    }
+}
+
+#[test]
+fn challenge21() {
+    let mut rng: Mt19937 = Default::default();
+    assert_eq!(rng.gen(), 3499211612);
+    assert_eq!(rng.gen(), 581869302);
+    assert_eq!(rng.gen(), 3890346734);
+    assert_eq!(rng.gen(), 3586334585);
+    assert_eq!(rng.gen(), 545404204);
+    assert_eq!(rng.gen(), 4161255391);
+    assert_eq!(rng.gen(), 3922919429);
+    assert_eq!(rng.gen(), 949333985);
+}
+
+mod chall22 {
+    use anyhow::Result;
+    use rusty_pals::rand::{Mt19937, Rng32};
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn challenge22() -> Result<()> {
+        let mut rng = Mt19937::new();
+        let mut unix_ts = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs() as u32;
+        unix_ts += 40 + (rng.gen() % (1000 - 40));
+        let seed = unix_ts;
+        rng.seed(seed);
+        let n = rng.gen();
+        unix_ts += 500 + (rng.gen() % 1000);
+        assert_eq!(crack(n, unix_ts), seed);
+        Ok(())
+    }
+
+    fn crack(n: u32, curr_unix_ts: u32) -> u32 {
+        let mut ts = curr_unix_ts;
+        loop {
+            let mut rng = Mt19937::from_seed(ts);
+            if rng.gen() == n {
+                break ts;
+            }
+            ts -= 1;
+        }
+    }
+}
+
+#[cfg(test)]
+mod chall23 {
+    use anyhow::Result;
+    use rusty_pals::rand::{Mt19937, Rng32};
+    use rusty_pals::util::try_cast_as_array;
+    use std::iter;
+
+    fn untemper(mut t: u32) -> u32 {
+        use rusty_pals::rand::mt19937::constants::*;
+
+        fn bit(x: u32, n: u32) -> u32 {
+            x & (1 << n)
+        }
+
+        fn inv_rshift(x: u32, shift: u32, mask: Option<u32>) -> u32 {
+            let mask = mask.unwrap_or(u32::MAX);
+            let mut res = 0;
+            for i in 0..W {
+                if i < shift {
+                    res |= bit(x, W - 1 - i);
+                } else {
+                    res |= bit(x, W - 1 - i)
+                        ^ (bit(mask, W - i - 1) != 0)
+                            .then(|| bit(res, W - 1 - i + shift) >> shift)
+                            .unwrap_or(0);
+                }
+            }
+            res
+        }
+
+        fn inv_lshift(x: u32, shift: u32, mask: Option<u32>) -> u32 {
+            let mask = mask.unwrap_or(u32::MAX);
+            let mut res = 0;
+            for i in 0..W {
+                if i < shift {
+                    res |= bit(x, i);
+                } else {
+                    res |= bit(x, i)
+                        ^ (bit(mask, i) != 0)
+                            .then(|| bit(res, i - shift) << shift)
+                            .unwrap_or(0);
+                }
+            }
+            res
+        }
+
+        t = inv_rshift(t, L, None);
+        t = inv_lshift(t, T, Some(C));
+        t = inv_lshift(t, S, Some(B));
+        inv_rshift(t, U, Some(D))
+    }
+
+    #[test]
+    fn test_untemper() {
+        assert_eq!(untemper(Mt19937::temper(0xDEADBEEF)), 0xDEADBEEF);
+        assert_eq!(untemper(Mt19937::temper(0xC0FFEE)), 0xC0FFEE);
+        assert_eq!(untemper(Mt19937::temper(u32::MAX)), u32::MAX);
+        assert_eq!(untemper(Mt19937::temper(u32::MIN)), u32::MIN);
+    }
+
+    #[test]
+    fn challenge23() -> Result<()> {
+        let mut rng = Mt19937::new();
+        let tapped: Vec<_> = iter::from_fn(|| Some(rng.gen())).take(624).collect();
+        let mut cloned = attack(&tapped[..])?;
+
+        for _ in 0..1000 {
+            assert_eq!(rng.gen(), cloned.gen());
+        }
+
+        Ok(())
+    }
+
+    fn attack(outputs: &[u32]) -> Result<Mt19937> {
+        let raw_state: Vec<u32> = outputs.iter().copied().map(untemper).collect();
+        Mt19937::from_state(try_cast_as_array(&raw_state[..])?)
+    }
+}
+
+mod chall24 {
+    use anyhow::Result;
+    use rusty_pals::encoding::Encodable;
+    use rusty_pals::rand::{Mt19937, Rng32, XorShift32};
+    use rusty_pals::util::{as_chunks, as_chunks_mut};
+    use rusty_pals::xor::xor_block_simd_into;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn encrypt(data: impl AsRef<[u8]>, seed: u16) -> Vec<u8> {
+        let mut data = data.as_ref().to_vec();
+        let mut rng = Mt19937::from_seed(seed as u32);
+        let keystream = rng.gen_bytes(data.len());
+
+        let (data_chunks, data_rmdr) = as_chunks_mut(&mut data);
+        let (key_chunks, key_rmdr) = as_chunks(&keystream);
+
+        // SIMD for speed I guess lol, might as well use all these functions I've written
+        for (dc, kc) in data_chunks.iter_mut().zip(key_chunks.iter()) {
+            xor_block_simd_into(kc, dc);
+        }
+        for (d, k) in data_rmdr.iter_mut().zip(key_rmdr.iter()) {
+            *d ^= k;
+        }
+
+        data
+    }
+
+    #[test]
+    fn test_m19937_stream_cipher() {
+        let data =
+            "Wow this is a really long string, some actual SIMD stuff might get used for this lmao";
+
+        let seed = 0x1337;
+        let enc_data = encrypt(data, seed);
+        assert_eq!(encrypt(enc_data, seed), data.as_bytes());
+    }
+
+    fn get_rand_ciphertext() -> (u16, Vec<u8>) {
+        let mut rng = XorShift32::new();
+        let rand_chars = (rng.gen() % 40) + 10;
+        let mut ciphertext = rng.gen_bytes(rand_chars as usize);
+        ciphertext.extend_from_slice(&[b'A'; 14][..]);
+        let seed = rng.gen() as u16;
+        (seed, encrypt(ciphertext, seed))
+    }
+
+    #[test]
+    fn challenge24() -> Result<()> {
+        let (seed, ct) = get_rand_ciphertext();
+        assert_eq!(recover_seed(&ct[..]), seed);
+
+        let curr_time = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs() as u32;
+        let valid_token = create_recovery_token(curr_time);
+
+        assert!(token_created_in_last_five_minutes(valid_token)?);
+
+        // create a token 500 seconds in the past
+        let invalid_token = create_recovery_token(curr_time - 500);
+        assert!(!token_created_in_last_five_minutes(invalid_token)?);
+
+        Ok(())
+    }
+
+    fn recover_seed(ct: &[u8]) -> u16 {
+        let known = [b'A'; 14];
+        for seed in u16::MIN..=u16::MAX {
+            let enc = encrypt(ct, seed);
+            if enc.ends_with(&known[..]) {
+                return seed;
+            }
+        }
+
+        unreachable!("The encrypted data was seeded with a 16 bit value, we will find it :)");
+    }
+
+    fn create_recovery_token(time: u32) -> String {
+        let mut rng = Mt19937::from_seed(time);
+        rng.gen_bytes(20).encode_b64()
+    }
+
+    fn token_created_in_last_five_minutes(token: String) -> Result<bool> {
+        let curr_time = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs() as u32;
+        for s in 0..=360 {
+            if create_recovery_token(curr_time - s) == token {
+                return Ok(true);
+            }
+        }
+
+        Ok(false)
     }
 }

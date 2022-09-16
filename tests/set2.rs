@@ -35,7 +35,7 @@ mod chal11 {
         aes::{encrypt, Aes, Aes128, Mode},
         pad,
     };
-    use rusty_pals::rand::XorShift32;
+    use rusty_pals::rand::{Rng32, XorShift32};
     use rusty_pals::util::{self, cast_as_arrays};
 
     fn encryption_oracle(rng: &mut XorShift32, input: impl AsRef<[u8]>) -> Result<(bool, Vec<u8>)> {
@@ -71,7 +71,7 @@ mod chal11 {
     fn challenge11() -> Result<()> {
         let mut count_correct = 0;
         let num_rounds = 10000;
-        let mut rng = XorShift32::new(42);
+        let mut rng = XorShift32::new();
         for _ in 0..num_rounds {
             let (is_ecb, encrypted) = encryption_oracle(&mut rng, "A".repeat(43))?;
             let is_ecb_guess = detect_mode(encrypted);
@@ -90,13 +90,13 @@ mod chal12 {
     use rusty_pals::encryption::aes::{encrypt, Aes, Aes128, Iv, Mode};
     use rusty_pals::encryption::oracle::EncryptionOracle;
     use rusty_pals::encryption::pad;
-    use rusty_pals::rand::XorShift32;
+    use rusty_pals::rand::{Rng32, XorShift32};
     use rusty_pals::util::{cast_as_array, cast_as_arrays};
     use std::collections::{HashMap, HashSet, VecDeque};
 
     #[test]
     fn challenge12() -> Result<()> {
-        let mut rng = XorShift32::new(42);
+        let mut rng = XorShift32::new();
         let oracle = EcbOracle::new(&mut rng)?;
 
         let decoded = attack(oracle)?;
@@ -253,7 +253,7 @@ mod chal13 {
     use rusty_pals::encoding::Encodable;
     use rusty_pals::encryption::aes::{decrypt, encrypt, Aes, Aes128, Iv, Mode};
     use rusty_pals::encryption::pad::{pkcs7_into, pkcs7_unpad_owned};
-    use rusty_pals::rand::XorShift32;
+    use rusty_pals::rand::{Rng32, XorShift32};
     use std::fmt;
     use std::fmt::{Formatter, Write};
     use std::str::FromStr;
@@ -392,7 +392,7 @@ mod chal13 {
 
     #[test]
     fn challenge13() -> Result<()> {
-        let mut rng = XorShift32::new(1234567890);
+        let mut rng = XorShift32::new();
         let mut profile_manager = ProfileManager::new(&mut rng);
 
         let enc_profile = attack(&mut profile_manager)?;
@@ -456,7 +456,7 @@ mod chal14 {
         oracle::EncryptionOracle,
         pad,
     };
-    use rusty_pals::rand::XorShift32;
+    use rusty_pals::rand::{Rng32, XorShift32};
     use rusty_pals::util::{cast_as_array, cast_as_arrays};
     use std::collections::VecDeque;
 
@@ -526,7 +526,7 @@ mod chal14 {
 
     #[test]
     fn challenge14() -> Result<()> {
-        let mut rng = XorShift32::new(42);
+        let mut rng = XorShift32::new();
         let oracle = EcbOracle::new(&mut rng)?;
 
         let decoded = attack(oracle)?;
@@ -642,7 +642,7 @@ mod chall16 {
         aes::{decrypt, encrypt, Aes, Aes128, Mode},
         pad,
     };
-    use rusty_pals::rand::XorShift32;
+    use rusty_pals::rand::{Rng32, XorShift32};
     use rusty_pals::util::cast_as_array;
     use std::io::Write;
 
@@ -692,7 +692,7 @@ mod chall16 {
 
     #[test]
     fn test_correct_output_forbidden() -> Result<()> {
-        let mut rng = XorShift32::new(42);
+        let mut rng = XorShift32::new();
         let mut chall = Challenge::new(&mut rng);
         let enc = chall.encrypt(";admin=true;");
         assert!(!chall.decrypt(enc));
@@ -702,7 +702,7 @@ mod chall16 {
 
     #[test]
     fn challenge16() -> Result<()> {
-        let mut rng = XorShift32::new(42);
+        let mut rng = XorShift32::new();
         let mut chall = Challenge::new(&mut rng);
 
         let manipulated = attack(&mut chall);

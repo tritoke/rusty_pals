@@ -43,7 +43,7 @@ mod helpers {
     pub unsafe fn aes_128_key_expansion(key: [u8; 16]) -> [__m128i; 11] {
         let mut t1: __m128i;
         let mut t2: __m128i;
-        let mut key_schedule = array::from_fn(|_| unsafe { _mm_setzero_si128() });
+        let mut key_schedule = array::from_fn(|_| _mm_setzero_si128());
 
         t1 = _mm_loadu_si128(&key as *const u8 as *const _);
         key_schedule[0] = t1;
@@ -116,7 +116,7 @@ mod helpers {
         }
 
         let mut t2: __m128i;
-        let mut key_schedule = array::from_fn(|_| unsafe { _mm_setzero_si128() });
+        let mut key_schedule = array::from_fn(|_| _mm_setzero_si128());
 
         let (mut t1, mut t3) = {
             // prevent OOB read
@@ -202,7 +202,7 @@ mod helpers {
         let mut t1: __m128i;
         let mut t2: __m128i;
         let mut t3: __m128i;
-        let mut key_schedule = array::from_fn(|_| unsafe { _mm_setzero_si128() });
+        let mut key_schedule = array::from_fn(|_| _mm_setzero_si128());
 
         t1 = _mm_loadu_si128(key.as_ptr() as *const _);
         t3 = _mm_loadu_si128(key.as_ptr().offset(16) as *const _);
