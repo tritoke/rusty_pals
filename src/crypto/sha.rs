@@ -7,15 +7,15 @@ pub mod constants {
     pub const H1: u32 = 0xEFCDAB89;
     pub const H2: u32 = 0x98BADCFE;
     pub const H3: u32 = 0x10325476;
-    pub const H4: u32 = 0xC3D2e1F0;
+    pub const H4: u32 = 0xC3D2E1F0;
     pub const MASK0: u64 = 0x0001020304050607;
     pub const MASK1: u64 = 0x08090a0b0c0d0e0f;
 }
-use crate::util::{as_chunks, cast_as_array};
+use crate::util::as_chunks;
 use constants::*;
 
 #[derive(Debug, Clone)]
-struct Sha1 {
+pub struct Sha1 {
     state: [u32; 5],
     message_length: u64,
     unprocessed_data: Vec<u8>,
@@ -252,7 +252,7 @@ impl Hasher for Sha1 {
         self.finalized = true;
 
         assert!(
-            dbg!(self).unprocessed_data.is_empty(),
+            self.unprocessed_data.is_empty(),
             "There must be no unprocessed data after finalization."
         );
     }
@@ -281,8 +281,8 @@ mod tests {
     use super::*;
     use crate::encoding::Encodable;
 
-    #[test]
     // test vectors from https://www.di-mgt.com.au/sha_testvectors.html
+    #[test]
     fn test_sha1_nist_vectors() {
         let test_vectors = [
             ("", "da39a3ee5e6b4b0d3255bfef95601890afd80709"),

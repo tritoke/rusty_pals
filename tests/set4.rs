@@ -197,3 +197,43 @@ mod chall27 {
         xor_block_simd(&plain_chunks[0], &plain_chunks[2])
     }
 }
+
+mod chall28 {
+    use rusty_pals::crypto::{sha::Sha1, Hasher};
+    use rusty_pals::rand::{Rng32, XorShift32};
+
+    type Digest = <Sha1 as Hasher>::Digest;
+    struct Challenge {
+        key: [u8; 20],
+    }
+
+    impl Challenge {
+        fn new() -> Self {
+            Self {
+                key: XorShift32::new().gen_array(),
+            }
+        }
+
+        fn mac(&self, message: impl AsRef<[u8]>) -> Digest {
+            let mut hasher = Sha1::new();
+            hasher.update(self.key);
+            hasher.update(message.as_ref());
+            hasher.finalize();
+            hasher.digest()
+        }
+
+        fn is_message_valid(&self, message: impl AsRef<[u8]>, mac: Digest) -> bool {
+            self.mac(message) == mac
+        }
+    }
+
+    #[test]
+    fn challenge28() {
+        let chall = Challenge::new();
+        let mut data = b"I should probably write some cool movie quote here for some future dev to find and smile at, but alas I can't be arsed.".to_vec();
+        let mac = chall.mac(&data);
+        data[5] = b'1';
+        assert!(!chall.is_message_valid(&data, mac));
+        assert!(!chall.is_message_valid(&data, XorShift32::new().gen_array()));
+    }
+}
