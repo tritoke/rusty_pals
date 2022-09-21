@@ -5,8 +5,6 @@ use crate::xor::{xor_block_simd, xor_block_simd_into};
 use std::arch::x86_64::*;
 use std::mem;
 
-type Block = [u8; 16];
-
 #[non_exhaustive]
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub enum Mode {
@@ -45,7 +43,7 @@ mod helpers {
         let mut t2: __m128i;
         let mut key_schedule = array::from_fn(|_| _mm_setzero_si128());
 
-        t1 = _mm_loadu_si128(&key as *const u8 as *const _);
+        t1 = _mm_loadu_si128(key.as_ptr().cast());
         key_schedule[0] = t1;
 
         t2 = _mm_aeskeygenassist_si128::<0x1>(t1);

@@ -192,9 +192,8 @@ mod chall27 {
         let ct = chall.encrypt("");
         let ct_chunks = cast_as_arrays(&ct);
         let malicious = [ct_chunks[0], [0u8; 16], ct_chunks[0]].concat();
-        let plain = dbg!(chall.decrypt(dbg!(malicious))).unwrap_err();
+        let plain = chall.decrypt(malicious).unwrap_err();
         let plain_chunks = cast_as_arrays(&plain);
-        dbg!(plain_chunks);
         xor_block_simd(&plain_chunks[0], &plain_chunks[2])
     }
 }
