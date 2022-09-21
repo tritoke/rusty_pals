@@ -1,5 +1,4 @@
 use crate::rand::Rng32;
-use std::io::Read;
 
 #[derive(Debug, Copy, Clone)]
 pub struct XorShift32 {
@@ -8,14 +7,10 @@ pub struct XorShift32 {
 
 impl Rng32 for XorShift32 {
     fn new() -> Self {
-        let mut f = std::fs::File::open("/dev/urandom").expect("Couldn't open /dev/urandom");
         loop {
-            let mut seed = [0u8; 4];
-            f.read(&mut seed)
-                .expect("Couldn't read seed from /dev/urandom");
-            let state = u32::from_le_bytes(seed);
-            if state != 0 {
-                break Self { state };
+            let seed = crate::rand::gen_random_seed();
+            if seed != 0 {
+                break Self { state: seed };
             }
         }
     }

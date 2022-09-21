@@ -3,6 +3,17 @@ pub use xorshift32::XorShift32;
 pub mod mt19937;
 pub use mt19937::Mt19937;
 
+use std::io::Read;
+
+/// Generate a random, non-zero seed from /dev/urandom
+fn gen_random_seed() -> u32 {
+    let mut f = std::fs::File::open("/dev/urandom").expect("couldn't open /dev/urandom");
+    let mut seed = [0u8; 4];
+    f.read_exact(&mut seed)
+        .expect("couldn't read seed from /dev/urandom");
+    u32::from_le_bytes(seed)
+}
+
 pub trait Rng32 {
     /// Seed from /dev/urandom
     fn new() -> Self;

@@ -1,6 +1,6 @@
 mod chall25 {
     use anyhow::Result;
-    use rusty_pals::encryption::aes::{decrypt, encrypt, Aes128, Iv, Mode};
+    use rusty_pals::crypto::aes::{decrypt, encrypt, Aes128, Iv, Mode};
     use rusty_pals::rand::{Rng32, XorShift32};
     use rusty_pals::xor::{xor_blocks, xor_with_key};
 
@@ -54,7 +54,7 @@ mod chall25 {
 
 mod chall26 {
     use anyhow::Result;
-    use rusty_pals::encryption::aes::{decrypt, encrypt, Aes128, Mode};
+    use rusty_pals::crypto::aes::{decrypt, encrypt, Aes128, Mode};
     use rusty_pals::rand::{Rng32, XorShift32};
     use rusty_pals::util::cast_as_array;
     use std::io::Write;
@@ -133,12 +133,12 @@ mod chall26 {
 
 mod chall27 {
     use anyhow::Result;
-    use rusty_pals::encryption::{
+    use rusty_pals::crypto::{
         aes::{decrypt, encrypt, Aes, Aes128, Mode},
         pad,
     };
     use rusty_pals::rand::{Rng32, XorShift32};
-    use rusty_pals::util::{cast_as_array, cast_as_arrays};
+    use rusty_pals::util::cast_as_arrays;
     use rusty_pals::xor::xor_block_simd;
     use std::io::Write;
     use std::string::FromUtf8Error;
@@ -173,7 +173,7 @@ mod chall27 {
 
         fn decrypt(&self, data: impl AsRef<[u8]>) -> Result<bool, Vec<u8>> {
             let data = data.as_ref();
-            let mut dec = decrypt(data, &self.key, self.iv, Mode::CBC);
+            let dec = decrypt(data, &self.key, self.iv, Mode::CBC);
             let needle = ";admin=true;";
             String::from_utf8(dec)
                 .map(|text| text.contains(needle))

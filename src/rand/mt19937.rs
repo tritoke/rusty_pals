@@ -2,7 +2,6 @@
 
 use crate::rand::Rng32;
 use anyhow::Result;
-use std::io::Read;
 use std::mem;
 
 pub mod constants {
@@ -84,11 +83,7 @@ impl Mt19937 {
 
 impl Rng32 for Mt19937 {
     fn new() -> Self {
-        let mut file = std::fs::File::open("/dev/urandom").expect("Couldn't open /dev/urandom");
-        let mut seed = [0u8; 4];
-        file.read(&mut seed)
-            .expect("Failed to read from /dev/urandom");
-        Self::from_seed(u32::from_le_bytes(seed))
+        Self::from_seed(crate::rand::gen_random_seed())
     }
 
     fn from_seed(seed: u32) -> Self {

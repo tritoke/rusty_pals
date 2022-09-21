@@ -380,14 +380,14 @@ impl From<[u8; 16]> for Iv {
     }
 }
 
-/// Perform encryption using AES ECB mode
+/// Perform crypto using AES ECB mode
 fn encrypt_ecb(input: &[[u8; 16]], out: &mut [[u8; 16]], aes: &impl Aes) {
     for (block, out_block) in input.iter().zip(out.iter_mut()) {
         aes.encrypt_block(block, out_block);
     }
 }
 
-/// Perform encryption using AES CBC mode
+/// Perform crypto using AES CBC mode
 fn encrypt_cbc(input: &[[u8; 16]], out: &mut [[u8; 16]], iv: Iv, aes: &impl Aes) {
     let mut state = iv.unwrap_block();
     for (block, out_block) in input.iter().zip(out.iter_mut()) {
@@ -419,7 +419,7 @@ impl CtrState {
     }
 }
 
-/// Perform encryption using AES CTR mode
+/// Perform crypto using AES CTR mode
 fn encrypt_ctr(input: &[u8], out: &mut [u8], iv: Iv, aes: &impl Aes) {
     // split input and output into blocks / uneven
     let input_blocks_len = input.len() - (input.len() % 16);
@@ -448,7 +448,7 @@ fn encrypt_ctr(input: &[u8], out: &mut [u8], iv: Iv, aes: &impl Aes) {
     }
 }
 
-/// Perform AES encryption
+/// Perform AES crypto
 pub fn encrypt(
     input: impl AsRef<[u8]>,
     key: &impl AesKeySchedule,

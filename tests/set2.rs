@@ -1,9 +1,9 @@
 use anyhow::Result;
-use rusty_pals::encoding::Decodable;
-use rusty_pals::encryption::{
+use rusty_pals::crypto::{
     aes::{decrypt, Aes128, Mode},
     pad,
 };
+use rusty_pals::encoding::Decodable;
 
 #[test]
 fn challenge9() -> Result<()> {
@@ -30,8 +30,8 @@ fn challenge10() -> Result<()> {
 
 mod chal11 {
     use anyhow::Result;
-    use rusty_pals::encryption::aes::Iv;
-    use rusty_pals::encryption::{
+    use rusty_pals::crypto::aes::Iv;
+    use rusty_pals::crypto::{
         aes::{encrypt, Aes, Aes128, Mode},
         pad,
     };
@@ -86,10 +86,10 @@ mod chal11 {
 
 mod chal12 {
     use anyhow::{anyhow, ensure, Result};
+    use rusty_pals::crypto::aes::{encrypt, Aes, Aes128, Iv, Mode};
+    use rusty_pals::crypto::oracle::EncryptionOracle;
+    use rusty_pals::crypto::pad;
     use rusty_pals::encoding::Decodable;
-    use rusty_pals::encryption::aes::{encrypt, Aes, Aes128, Iv, Mode};
-    use rusty_pals::encryption::oracle::EncryptionOracle;
-    use rusty_pals::encryption::pad;
     use rusty_pals::rand::{Rng32, XorShift32};
     use rusty_pals::util::{cast_as_array, cast_as_arrays};
     use std::collections::{HashMap, HashSet, VecDeque};
@@ -133,7 +133,7 @@ mod chal12 {
         let enc = oracle.encrypt("A".repeat(2 * block_size));
         ensure!(
             &enc[0..BLKSZ] == &enc[BLKSZ..2 * BLKSZ],
-            "Oracle is not using the ECB encryption mode."
+            "Oracle is not using the ECB crypto mode."
         );
 
         // Step 3/4: craft the block mappings
@@ -250,9 +250,9 @@ mod chal12 {
 
 mod chal13 {
     use anyhow::{anyhow, bail, Error, Result};
+    use rusty_pals::crypto::aes::{decrypt, encrypt, Aes, Aes128, Iv, Mode};
+    use rusty_pals::crypto::pad::{pkcs7_into, pkcs7_unpad_owned};
     use rusty_pals::encoding::Encodable;
-    use rusty_pals::encryption::aes::{decrypt, encrypt, Aes, Aes128, Iv, Mode};
-    use rusty_pals::encryption::pad::{pkcs7_into, pkcs7_unpad_owned};
     use rusty_pals::rand::{Rng32, XorShift32};
     use std::fmt;
     use std::fmt::{Formatter, Write};
@@ -449,13 +449,13 @@ mod chal13 {
 mod chal14 {
     use super::chal12::PrefixMapper;
     use anyhow::{anyhow, ensure, Result};
-    use rusty_pals::encoding::Decodable;
-    use rusty_pals::encryption::aes::Iv;
-    use rusty_pals::encryption::{
+    use rusty_pals::crypto::aes::Iv;
+    use rusty_pals::crypto::{
         aes::{encrypt, Aes, Aes128, Mode},
         oracle::EncryptionOracle,
         pad,
     };
+    use rusty_pals::encoding::Decodable;
     use rusty_pals::rand::{Rng32, XorShift32};
     use rusty_pals::util::{cast_as_array, cast_as_arrays};
     use std::collections::VecDeque;
@@ -498,7 +498,7 @@ mod chal14 {
         }
     }
 
-    /// Struct to wrap the original encryption oracle into one we can use with the prefix mapper
+    /// Struct to wrap the original crypto oracle into one we can use with the prefix mapper
     #[derive(Debug)]
     struct OracleWrapper<T: EncryptionOracle> {
         inner_oracle: T,
@@ -565,10 +565,7 @@ mod chal14 {
             .iter()
             .zip(blocks.iter().skip(1))
             .position(|(a, b)| a == b);
-        ensure!(
-            pos.is_some(),
-            "Oracle is not using the ECB encryption mode."
-        );
+        ensure!(pos.is_some(), "Oracle is not using the ECB crypto mode.");
 
         // Step 2.5 work out padding and offsets to ignore the prefixed data
         let controlled_block = pos.unwrap() * block_size;
@@ -638,7 +635,7 @@ fn challenge15() {
 
 mod chall16 {
     use anyhow::Result;
-    use rusty_pals::encryption::{
+    use rusty_pals::crypto::{
         aes::{decrypt, encrypt, Aes, Aes128, Mode},
         pad,
     };

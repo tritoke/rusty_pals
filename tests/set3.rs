@@ -1,10 +1,10 @@
 use anyhow::Result;
+use rusty_pals::crypto::aes::{decrypt, Aes128, Mode};
 use rusty_pals::encoding::Decodable;
-use rusty_pals::encryption::aes::{decrypt, Aes128, Mode};
 use rusty_pals::rand::{Mt19937, Rng32};
 
 mod chal17 {
-    use rusty_pals::encryption::{
+    use rusty_pals::crypto::{
         aes::{decrypt, encrypt, Aes, Aes128, Mode},
         pad,
     };
@@ -155,8 +155,8 @@ fn challenge18() -> Result<()> {
 #[allow(unused, unreachable_code)]
 mod chall19 {
     use anyhow::Result;
+    use rusty_pals::crypto::aes::{encrypt, Aes128, Iv, Mode};
     use rusty_pals::encoding::{Decodable, Encodable};
-    use rusty_pals::encryption::aes::{encrypt, Aes128, Iv, Mode};
     use rusty_pals::rand::{Rng32, XorShift32};
     use rusty_pals::xor::xor_blocks;
 
@@ -196,8 +196,8 @@ mod chall19 {
 
 mod chall20 {
     use anyhow::{anyhow, Result};
+    use rusty_pals::crypto::aes::{encrypt, Aes128, Iv, Mode};
     use rusty_pals::encoding::Decodable;
-    use rusty_pals::encryption::aes::{encrypt, Aes128, Iv, Mode};
     use rusty_pals::rand::{Rng32, XorShift32};
     use rusty_pals::xor::{break_repeating_key_xor, xor_blocks};
 
