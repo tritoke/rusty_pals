@@ -647,13 +647,14 @@ mod chall16 {
     use std::io::Write;
 
     #[derive(Debug)]
-    struct Challenge<'a> {
+    struct Challenge {
         key: Aes128,
-        rng: &'a mut XorShift32,
+        rng: XorShift32,
     }
 
-    impl<'a> Challenge<'a> {
-        fn new(rng: &'a mut XorShift32) -> Self {
+    impl Challenge {
+        fn new() -> Self {
+            let mut rng = XorShift32::new();
             Self {
                 key: Aes128::new(&rng.gen_array()),
                 rng: rng,
@@ -692,8 +693,7 @@ mod chall16 {
 
     #[test]
     fn test_correct_output_forbidden() -> Result<()> {
-        let mut rng = XorShift32::new();
-        let mut chall = Challenge::new(&mut rng);
+        let mut chall = Challenge::new();
         let enc = chall.encrypt(";admin=true;");
         assert!(!chall.decrypt(enc));
 
@@ -702,8 +702,7 @@ mod chall16 {
 
     #[test]
     fn challenge16() -> Result<()> {
-        let mut rng = XorShift32::new();
-        let mut chall = Challenge::new(&mut rng);
+        let mut chall = Challenge::new();
 
         let manipulated = attack(&mut chall);
         assert!(chall.decrypt(manipulated));
