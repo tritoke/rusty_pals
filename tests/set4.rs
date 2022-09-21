@@ -199,7 +199,7 @@ mod chall27 {
 }
 
 mod chall28 {
-    use rusty_pals::crypto::{sha::Sha1, Hasher};
+    use rusty_pals::crypto::{sha1::Sha1, Hasher};
     use rusty_pals::rand::{Rng32, XorShift32};
 
     type Digest = <Sha1 as Hasher>::Digest;
@@ -234,6 +234,6 @@ mod chall28 {
         let mac = chall.mac(&data);
         data[5] = b'1';
         assert!(!chall.is_message_valid(&data, mac));
-        assert!(!chall.is_message_valid(&data, XorShift32::new().gen_array()));
+        assert!(!chall.is_message_valid(&data, [1, 2, 3, 4, 5].into()));
     }
 }

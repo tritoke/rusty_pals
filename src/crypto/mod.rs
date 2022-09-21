@@ -1,7 +1,7 @@
 pub mod aes;
 pub mod oracle;
 pub mod pad;
-pub mod sha;
+pub mod sha1;
 
 pub trait Hasher {
     type Digest;

@@ -11,6 +11,7 @@ pub mod constants {
     pub const MASK0: u64 = 0x0001020304050607;
     pub const MASK1: u64 = 0x08090a0b0c0d0e0f;
 }
+use crate::encoding::Encodable;
 use crate::util::as_chunks;
 use constants::*;
 
@@ -20,6 +21,37 @@ pub struct Sha1 {
     message_length: u64,
     unprocessed_data: Vec<u8>,
     finalized: bool,
+}
+
+/// Wrapper around [u8; 20] which ensures it has sufficient alignment
+/// to be cast between [u32; 5] and [u8; 20]
+#[repr(align(4))]
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+pub struct Digest(pub [u8; 20]);
+
+impl Encodable for Digest {
+    fn encode_hex(&self) -> String {
+        self.0.encode_hex()
+    }
+
+    fn encode_b64(&self) -> String {
+        self.0.encode_b64()
+    }
+}
+
+impl From<[u32; 5]> for Digest {
+    fn from(state: [u32; 5]) -> Self {
+        // Safety: u32 can always be safely cast into u8's
+        Self(unsafe { mem::transmute(state.map(u32::to_be)) })
+    }
+}
+
+impl From<Digest> for [u32; 5] {
+    fn from(digest: Digest) -> Self {
+        // Safety: the struct guarantees 4 byte alignment, thus it is always safe to transmute
+        // back from [u8] to [u32]
+        unsafe { mem::transmute::<_, [u32; 5]>(digest) }.map(u32::to_be)
+    }
 }
 
 impl Sha1 {
@@ -215,7 +247,7 @@ impl Sha1 {
 }
 
 impl Hasher for Sha1 {
-    type Digest = [u8; 20];
+    type Digest = Digest;
 
     fn new() -> Self {
         Self {
@@ -262,11 +294,7 @@ impl Hasher for Sha1 {
             self.finalized,
             "Attempting to get the digest of an unfinalized Hasher."
         );
-        self.state
-            .map(u32::to_be_bytes)
-            .concat()
-            .try_into()
-            .unwrap()
+        self.state.into()
     }
 
     fn reset(&mut self) {
@@ -277,6 +305,18 @@ impl Hasher for Sha1 {
     }
 }
 
+impl From<<Sha1 as Hasher>::Digest> for Sha1 {
+    fn from(digest: <Sha1 as Hasher>::Digest) -> Self {
+        Self {
+            state: digest.into(),
+            message_length: 0,
+            unprocessed_data: Vec::new(),
+            finalized: false,
+        }
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::encoding::Encodable;
@@ -313,5 +353,29 @@ mod tests {
             assert_eq!(hash.encode_hex(), correct);
             hasher.reset();
         }
+    }
+
+    #[test]
+    fn test_sha1_to_from_digest() {
+        let mut hasher = Sha1::new();
+        hasher.update("Wow this string sure isn't very long.");
+        hasher.finalize();
+        let recovered: Sha1 = hasher.digest().into();
+        assert_eq!(hasher.state, recovered.state)
+    }
+
+    #[test]
+    fn test_sha1_digest_is_be() {
+        let digest: Digest = [1, 2, 3, 4, 5].into();
+        let repr = [1, 2, 3, 4, 5].map(u32::to_be_bytes).concat();
+        assert_eq!(&digest.0[..], &repr[..]);
+    }
+
+    #[test]
+    fn test_sha1_digest_to_state() {
+        let digest0: Digest = [5, 4, 3, 2, 1].into();
+        let digest1: [u32; 5] = digest0.into();
+        let digest2: Digest = digest1.into();
+        assert_eq!(digest0, digest2);
     }
 }
