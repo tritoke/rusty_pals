@@ -3,3 +3,4 @@
 /ref/*.pdf
 /ref
 Cargo.lock
+output.txt
