@@ -202,19 +202,19 @@ mod chall28 {
     use rusty_pals::crypto::{sha1::Sha1, Hasher};
     use rusty_pals::rand::{Rng32, XorShift32};
 
-    type Digest = <Sha1 as Hasher>::Digest;
-    struct Challenge {
+    pub(super) type Digest = <Sha1 as Hasher>::Digest;
+    pub(super) struct Challenge {
         key: [u8; 20],
     }
 
     impl Challenge {
-        fn new() -> Self {
+        pub(super) fn new() -> Self {
             Self {
                 key: XorShift32::new().gen_array(),
             }
         }
 
-        fn mac(&self, message: impl AsRef<[u8]>) -> Digest {
+        pub(super) fn mac(&self, message: impl AsRef<[u8]>) -> Digest {
             let mut hasher = Sha1::new();
             hasher.update(self.key);
             hasher.update(message.as_ref());
@@ -222,7 +222,7 @@ mod chall28 {
             hasher.digest()
         }
 
-        fn is_message_valid(&self, message: impl AsRef<[u8]>, mac: Digest) -> bool {
+        pub(super) fn is_message_valid(&self, message: impl AsRef<[u8]>, mac: Digest) -> bool {
             self.mac(message) == mac
         }
     }
@@ -232,8 +232,55 @@ mod chall28 {
         let chall = Challenge::new();
         let mut data = b"I should probably write some cool movie quote here for some future dev to find and smile at, but alas I can't be arsed.".to_vec();
         let mac = chall.mac(&data);
+        assert!(chall.is_message_valid(&data, mac));
         data[5] = b'1';
         assert!(!chall.is_message_valid(&data, mac));
         assert!(!chall.is_message_valid(&data, [1, 2, 3, 4, 5].into()));
+    }
+}
+
+mod chall29 {
+    use super::chall28::{Challenge, Digest};
+    use rusty_pals::crypto::{sha1::Sha1, Hasher};
+
+    fn attack(data: &[u8], mac: Digest) -> (Vec<u8>, Digest) {
+        let mut new_data = data.to_vec();
+        const ADMIN_STRING: &[u8] = b";admin=true";
+        const MAC_KEY_SIZE: u64 = 20;
+
+        // pad data with the original SHA1 padding
+        let msg_len = data.len() as u64 * 8 + MAC_KEY_SIZE * 8;
+        new_data.push(0x80);
+        let k = (-(msg_len as i64) - 64 - 8).rem_euclid(512);
+        new_data.extend_from_slice(&vec![0; k as usize / 8]);
+        new_data.extend_from_slice(&msg_len.to_be_bytes());
+
+        // remember the processed length for later
+        let processed_len = new_data.len();
+
+        // append the malicious string
+        new_data.extend_from_slice(ADMIN_STRING);
+
+        // setup the hasher to receive the new string
+        let mut hasher = Sha1::from(mac);
+        hasher.set_message_len(processed_len as u64 * 8 + MAC_KEY_SIZE * 8);
+
+        // calculate the hash from this new appended data
+        hasher.update(ADMIN_STRING);
+        hasher.finalize();
+
+        let new_mac = hasher.digest();
+
+        (new_data, new_mac)
+    }
+
+    #[test]
+    fn challenge29() {
+        let chall = Challenge::new();
+        let data = b"comment1=cooking%20MCs;userdata=foo;comment2=%20like%20a%20pound%20of%20bacon";
+        let mac = chall.mac(&data);
+        let (new_data, new_mac) = attack(data, mac);
+        assert!(new_data.ends_with(b";admin=true"));
+        assert!(chall.is_message_valid(new_data, new_mac));
     }
 }

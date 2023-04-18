@@ -55,6 +55,10 @@ impl From<Digest> for [u32; 5] {
 }
 
 impl Sha1 {
+    pub fn set_message_len(&mut self, message_len: u64) {
+        self.message_length = message_len;
+    }
+
     /// Adapted from: https://stackoverflow.com/questions/21107350/how-can-i-access-sha-intrinsic
     unsafe fn process_block(&mut self, block: &[u8; 64]) {
         let mut abcd: __m128i;
