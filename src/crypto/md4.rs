@@ -194,6 +194,10 @@ impl Hasher for Md4 {
         self.unprocessed_data = Vec::new();
         self.finalized = false;
     }
+
+    fn set_message_len(&mut self, message_len: u64) {
+        self.message_length = message_len;
+    }
 }
 
 impl From<<Md4 as Hasher>::Digest> for Md4 {

@@ -16,4 +16,6 @@ pub trait Hasher {
     fn digest(&self) -> Self::Digest;
 
     fn reset(&mut self);
+
+    fn set_message_len(&mut self, message_len: u64);
 }

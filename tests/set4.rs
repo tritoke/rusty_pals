@@ -201,35 +201,40 @@ mod chall27 {
 mod chall28 {
     use rusty_pals::crypto::{sha1::Sha1, Hasher};
     use rusty_pals::rand::{Rng32, XorShift32};
+    use std::marker::PhantomData;
 
-    pub(super) type Digest = <Sha1 as Hasher>::Digest;
-    pub(super) struct Challenge {
+    pub(super) struct Challenge<H: Hasher> {
         key: [u8; 20],
+        _h: PhantomData<H>,
     }
 
-    impl Challenge {
+    impl<H: Hasher> Challenge<H> {
         pub(super) fn new() -> Self {
             Self {
                 key: XorShift32::new().gen_array(),
+                _h: Default::default(),
             }
         }
 
-        pub(super) fn mac(&self, message: impl AsRef<[u8]>) -> Digest {
-            let mut hasher = Sha1::new();
+        pub(super) fn mac(&self, message: impl AsRef<[u8]>) -> H::Digest {
+            let mut hasher = H::new();
             hasher.update(self.key);
             hasher.update(message.as_ref());
             hasher.finalize();
             hasher.digest()
         }
 
-        pub(super) fn is_message_valid(&self, message: impl AsRef<[u8]>, mac: Digest) -> bool {
+        pub(super) fn is_message_valid(&self, message: impl AsRef<[u8]>, mac: H::Digest) -> bool
+        where
+            <H as Hasher>::Digest: PartialEq,
+        {
             self.mac(message) == mac
         }
     }
 
     #[test]
     fn challenge28() {
-        let chall = Challenge::new();
+        let chall: Challenge<Sha1> = Challenge::new();
         let mut data = b"I should probably write some cool movie quote here for some future dev to find and smile at, but alas I can't be arsed.".to_vec();
         let mac = chall.mac(&data);
         assert!(chall.is_message_valid(&data, mac));
@@ -240,8 +245,10 @@ mod chall28 {
 }
 
 mod chall29 {
-    use super::chall28::{Challenge, Digest};
+    use super::chall28::Challenge;
     use rusty_pals::crypto::{sha1::Sha1, Hasher};
+
+    type Digest = <Sha1 as Hasher>::Digest;
 
     fn attack(data: &[u8], mac: Digest) -> (Vec<u8>, Digest) {
         let mut new_data = data.to_vec();
@@ -276,7 +283,55 @@ mod chall29 {
 
     #[test]
     fn challenge29() {
-        let chall = Challenge::new();
+        let chall: Challenge<Sha1> = Challenge::new();
+        let data = b"comment1=cooking%20MCs;userdata=foo;comment2=%20like%20a%20pound%20of%20bacon";
+        let mac = chall.mac(&data);
+        let (new_data, new_mac) = attack(data, mac);
+        assert!(new_data.ends_with(b";admin=true"));
+        assert!(chall.is_message_valid(new_data, new_mac));
+    }
+}
+
+mod chall30 {
+    use super::chall28::Challenge;
+    use rusty_pals::crypto::{md4::Md4, Hasher};
+
+    type Digest = <Md4 as Hasher>::Digest;
+
+    fn attack(data: &[u8], mac: Digest) -> (Vec<u8>, Digest) {
+        let mut new_data = data.to_vec();
+        const ADMIN_STRING: &[u8] = b";admin=true";
+        const MAC_KEY_SIZE: u64 = 20;
+
+        // pad data with the original Md4 padding
+        let msg_len = data.len() as u64 * 8 + MAC_KEY_SIZE * 8;
+        new_data.push(0x80);
+        let k = (-(msg_len as i64) - 64 - 8).rem_euclid(512);
+        new_data.extend_from_slice(&vec![0; k as usize / 8]);
+        new_data.extend_from_slice(&msg_len.to_le_bytes());
+
+        // remember the processed length for later
+        let processed_len = new_data.len();
+
+        // append the malicious string
+        new_data.extend_from_slice(ADMIN_STRING);
+
+        // setup the hasher to receive the new string
+        let mut hasher = Md4::from(mac);
+        hasher.set_message_len(processed_len as u64 * 8 + MAC_KEY_SIZE * 8);
+
+        // calculate the hash from this new appended data
+        hasher.update(ADMIN_STRING);
+        hasher.finalize();
+
+        let new_mac = hasher.digest();
+
+        (new_data, new_mac)
+    }
+
+    #[test]
+    fn challenge30() {
+        let chall: Challenge<Md4> = Challenge::new();
         let data = b"comment1=cooking%20MCs;userdata=foo;comment2=%20like%20a%20pound%20of%20bacon";
         let mac = chall.mac(&data);
         let (new_data, new_mac) = attack(data, mac);
