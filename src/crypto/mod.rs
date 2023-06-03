@@ -1,4 +1,5 @@
 pub mod aes;
+pub mod md4;
 pub mod oracle;
 pub mod pad;
 pub mod sha1;
