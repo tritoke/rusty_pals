@@ -1,11 +1,14 @@
 pub mod aes;
+pub mod hmac;
 pub mod md4;
 pub mod oracle;
 pub mod pad;
 pub mod sha1;
 
 pub trait Hasher {
-    type Digest;
+    type Digest: AsRef<[u8]>;
+
+    const BLOCK_SIZE: usize;
 
     fn new() -> Self;
 

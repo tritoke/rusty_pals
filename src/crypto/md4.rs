@@ -26,6 +26,12 @@ pub struct Md4 {
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub struct Digest(pub [u8; 16]);
 
+impl AsRef<[u8]> for Digest {
+    fn as_ref(&self) -> &[u8] {
+        &self.0
+    }
+}
+
 impl Encodable for Digest {
     fn encode_hex(&self) -> String {
         self.0.encode_hex()
@@ -139,6 +145,8 @@ impl Md4 {
 
 impl Hasher for Md4 {
     type Digest = Digest;
+
+    const BLOCK_SIZE: usize = 64;
 
     fn new() -> Self {
         Self {

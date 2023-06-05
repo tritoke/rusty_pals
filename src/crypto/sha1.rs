@@ -29,6 +29,12 @@ pub struct Sha1 {
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub struct Digest(pub [u8; 20]);
 
+impl AsRef<[u8]> for Digest {
+    fn as_ref(&self) -> &[u8] {
+        &self.0
+    }
+}
+
 impl Encodable for Digest {
     fn encode_hex(&self) -> String {
         self.0.encode_hex()
@@ -248,6 +254,8 @@ impl Sha1 {
 
 impl Hasher for Sha1 {
     type Digest = Digest;
+
+    const BLOCK_SIZE: usize = 64;
 
     fn new() -> Self {
         Self {
