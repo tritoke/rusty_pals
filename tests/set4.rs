@@ -339,3 +339,40 @@ mod chall30 {
         assert!(chall.is_message_valid(new_data, new_mac));
     }
 }
+
+mod chall31 {
+    use rusty_pals::crypto::{sha1::Sha1, Hasher};
+    use rusty_pals::rand::{Rng32, XorShift32};
+    use std::ptr::eq;
+    use std::time::Duration;
+
+    type Digest = <Sha1 as Hasher>::Digest;
+
+    /// cba with sleeps, just return the number of correct bytes as a float with some noise added
+    fn insecure_compare(a: &[u8], b: &[u8]) -> (bool, Duration) {
+        let mut time_slept = Duration::default();
+        let mut equal = true;
+        let mut rng = XorShift32::new();
+
+        for (c1, c2) in a.iter().zip(b.iter()) {
+            if c1 != c2 {
+                equal = false;
+                break;
+            }
+
+            // Add 50ms plus some noise up to 0xFFF - 4095us = 4ms
+            time_slept +=
+                Duration::from_millis(50) + Duration::from_micros(rng.gen() as u64 & 0xFFF);
+        }
+
+        (equal, time_slept)
+    }
+
+    #[test]
+    fn challenge31() {
+        let (equal, time) = insecure_compare(b"cock", b"cook");
+        assert!(!equal);
+        assert!(time >= Duration::from_millis(100));
+        assert!(time <= Duration::from_millis(100) + Duration::from_micros(0xFFF * 2));
+    }
+}
