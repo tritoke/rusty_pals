@@ -422,3 +422,89 @@ mod chall31 {
         assert_eq!(chall.challenge(data, sig).0, 200);
     }
 }
+
+mod chall32 {
+    use rusty_pals::crypto::hmac::Hmac;
+    use rusty_pals::crypto::{
+        sha1::{Digest, Sha1},
+        Hasher,
+    };
+    use rusty_pals::fit::pearson_correlation;
+    use rusty_pals::rand::{Rng32, XorShift32};
+    use std::time::Duration;
+
+    const COMPARE_TIME: Duration = Duration::from_millis(5);
+
+    struct Challenge {
+        hmacer: Hmac<Sha1>,
+    }
+
+    impl Challenge {
+        fn new() -> Self {
+            Self {
+                hmacer: Hmac::new("Be gay do crimes!!!"),
+            }
+        }
+
+        /// cba with sleeps, just return the number of correct bytes as a float with some noise added
+        fn insecure_compare(a: &[u8], b: &[u8]) -> (bool, Duration) {
+            let mut time_slept = COMPARE_TIME;
+            let mut equal = true;
+            let mut rng = XorShift32::new();
+
+            for (c1, c2) in a.iter().zip(b.iter()) {
+                if c1 != c2 {
+                    equal = false;
+                    break;
+                }
+
+                // Add 5ms plus some noise up to 0x3FF - 1023us = 1ms
+                time_slept += COMPARE_TIME + Duration::from_micros(rng.gen() as u64 & 0x3FF);
+            }
+
+            (equal, time_slept)
+        }
+
+        fn challenge(&self, file: &[u8], signature: Digest) -> (u32, Duration) {
+            let mac = self.hmacer.mac(file);
+            let (equal, duration) = Self::insecure_compare(mac.as_ref(), signature.as_ref());
+            if equal {
+                (200, duration)
+            } else {
+                (500, duration)
+            }
+        }
+    }
+
+    fn attack<const N: usize>(chall: &Challenge, data: &[u8]) -> Digest {
+        let mut recovered = [0u8; 20];
+
+        for i in 0..recovered.len() {
+            recovered[i] = (u8::MIN..=u8::MAX)
+                .into_iter()
+                .max_by_key(|&guess| {
+                    recovered[i] = guess;
+
+                    // Collect N runs and see how well they correlate with the increased duration
+                    let total_time = (0..N)
+                        .map(|_| chall.challenge(data, Digest(recovered)).1)
+                        .sum::<Duration>();
+
+                    total_time / N as u32
+                })
+                .expect("Max on non-empty iterator always returns a value");
+        }
+
+        Digest(recovered)
+    }
+
+    #[test]
+    fn challenge32() {
+        let chall = Challenge::new();
+        let data = b"My name is jeff and I can count to 1 milllion!!!";
+        let sig = attack::<10>(&chall, data);
+        dbg!(chall.hmacer.mac(data));
+        dbg!(sig);
+        assert_eq!(chall.challenge(data, sig).0, 200);
+    }
+}

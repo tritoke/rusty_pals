@@ -27,6 +27,34 @@ pub fn edit_distance(a: impl AsRef<[u8]>, b: impl AsRef<[u8]>) -> u32 {
         .sum()
 }
 
+// yoinked from https://github.com/tritoke/aes_observed_done_fast
+pub fn pearson_correlation(x: &[f64], y: &[f64]) -> f64 {
+    // implementation of the iterative update formulas from: https://crypto.fit.cvut.cz/sites/default/files/publications/fulltexts/pearson.pdf
+    assert_eq!(x.len(), y.len());
+
+    let [_, _, m2x, m2y, c2s] = x.iter().zip(y.iter()).enumerate().fold(
+        [0.0_f64; 5],
+        |[x_bar_, y_bar_, m2x_, m2y_, c2s_], (n, (&x, &y))| {
+            let n = n as f64;
+
+            // update the means
+            let x_bar = x_bar_ + ((x - x_bar_) / (n + 1.0));
+            let y_bar = y_bar_ + ((y - y_bar_) / (n + 1.0));
+
+            // update the sums
+            let m2x = m2x_ + (x - x_bar) * (x - x_bar_);
+            let m2y = m2y_ + (y - y_bar) * (y - y_bar_);
+
+            // update the covariance
+            let c2s = c2s_ + (n / (n + 1.0)) * (x - x_bar_) * (y - y_bar_);
+
+            [x_bar, y_bar, m2x, m2y, c2s]
+        },
+    );
+
+    c2s / (m2x.sqrt() * m2y.sqrt())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
