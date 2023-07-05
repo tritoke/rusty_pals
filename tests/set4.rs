@@ -341,38 +341,84 @@ mod chall30 {
 }
 
 mod chall31 {
-    use rusty_pals::crypto::{sha1::Sha1, Hasher};
+    use rusty_pals::crypto::hmac::Hmac;
+    use rusty_pals::crypto::{
+        sha1::{Digest, Sha1},
+        Hasher,
+    };
     use rusty_pals::rand::{Rng32, XorShift32};
-    use std::ptr::eq;
     use std::time::Duration;
 
-    type Digest = <Sha1 as Hasher>::Digest;
+    struct Challenge {
+        hmacer: Hmac<Sha1>,
+    }
 
-    /// cba with sleeps, just return the number of correct bytes as a float with some noise added
-    fn insecure_compare(a: &[u8], b: &[u8]) -> (bool, Duration) {
-        let mut time_slept = Duration::default();
-        let mut equal = true;
-        let mut rng = XorShift32::new();
-
-        for (c1, c2) in a.iter().zip(b.iter()) {
-            if c1 != c2 {
-                equal = false;
-                break;
+    impl Challenge {
+        fn new() -> Self {
+            Self {
+                hmacer: Hmac::new("Be gay do crimes!!!"),
             }
-
-            // Add 50ms plus some noise up to 0xFFF - 4095us = 4ms
-            time_slept +=
-                Duration::from_millis(50) + Duration::from_micros(rng.gen() as u64 & 0xFFF);
         }
 
-        (equal, time_slept)
+        /// cba with sleeps, just return the number of correct bytes as a float with some noise added
+        fn insecure_compare(a: &[u8], b: &[u8]) -> (bool, Duration) {
+            let mut time_slept = Duration::default();
+            let mut equal = true;
+            let mut rng = XorShift32::new();
+
+            for (c1, c2) in a.iter().zip(b.iter()) {
+                if c1 != c2 {
+                    equal = false;
+                    break;
+                }
+
+                // Add 50ms plus some noise up to 0xFFF - 4095us = 4ms
+                time_slept +=
+                    Duration::from_millis(50) + Duration::from_micros(rng.gen() as u64 & 0xFFF);
+            }
+
+            (equal, time_slept)
+        }
+
+        fn challenge(&self, file: &[u8], signature: Digest) -> (u32, Duration) {
+            let mac = self.hmacer.mac(file);
+            let (equal, duration) = Self::insecure_compare(mac.as_ref(), signature.as_ref());
+            if equal {
+                (200, duration)
+            } else {
+                (500, duration)
+            }
+        }
+    }
+
+    fn attack(chall: &Challenge, data: &[u8]) -> Digest {
+        let mut recovered = [0u8; 20];
+
+        for i in 0..recovered.len() {
+            let (byte, _time) = (u8::MIN..=u8::MAX)
+                .into_iter()
+                .map(|b| {
+                    recovered[i] = b;
+                    (b, chall.challenge(data, Digest(recovered)).1)
+                })
+                .max_by_key(|(_, cmp_time)| *cmp_time)
+                .expect("Max on non-empty iterator always returns a value");
+            recovered[i] = byte;
+        }
+
+        Digest(recovered)
     }
 
     #[test]
     fn challenge31() {
-        let (equal, time) = insecure_compare(b"cock", b"cook");
+        let (equal, time) = Challenge::insecure_compare(b"cock", b"cook");
         assert!(!equal);
         assert!(time >= Duration::from_millis(100));
         assert!(time <= Duration::from_millis(100) + Duration::from_micros(0xFFF * 2));
+
+        let chall = Challenge::new();
+        let data = b"My name is jeff and I can count to 10!";
+        let sig = attack(&chall, data);
+        assert_eq!(chall.challenge(data, sig).0, 200);
     }
 }

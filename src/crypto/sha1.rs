@@ -12,7 +12,7 @@ pub mod constants {
     pub const MASK1: u64 = 0x08090a0b0c0d0e0f;
 }
 use crate::encoding::Encodable;
-use crate::util::as_chunks;
+use crate::util::{as_chunks, cast_as_arrays};
 use constants::*;
 
 #[derive(Debug, Clone)]
@@ -60,6 +60,7 @@ impl From<Digest> for [u32; 5] {
     }
 }
 
+#[cfg(target_feature = "sha")]
 impl Sha1 {
     /// Adapted from: https://stackoverflow.com/questions/21107350/how-can-i-access-sha-intrinsic
     unsafe fn process_block(&mut self, block: &[u8; 64]) {
@@ -248,6 +249,97 @@ impl Sha1 {
         abcd = _mm_shuffle_epi32::<0x1B>(abcd);
         _mm_storeu_si128(self.state.as_mut_ptr().cast(), abcd);
         self.state[4] = _mm_extract_epi32::<3>(e0) as u32;
+        self.message_length += 512;
+    }
+}
+
+#[cfg(not(target_feature = "sha"))]
+impl Sha1 {
+    // Pure Rust implementation because my laptop is not based enough for SHA instructions
+    // Translated from the C implementation in https://www.rfc-editor.org/rfc/rfc3174
+    unsafe fn process_block(&mut self, block: &[u8; 64]) {
+        // Constants defined in SHA-1
+        const K: [u32; 4] = [0x5A827999, 0x6ED9EBA1, 0x8F1BBCDC, 0xCA62C1D6];
+
+        // Word sequence
+        let mut w = [0u32; 80];
+
+        // Initialize the first 16 words in the array W
+        let block_words = cast_as_arrays(block);
+        for (word, chunk) in w.iter_mut().zip(block_words.iter()) {
+            *word = u32::from_be_bytes(*chunk);
+        }
+
+        for t in 16..80 {
+            w[t] = (w[t - 3] ^ w[t - 8] ^ w[t - 14] ^ w[t - 16]).rotate_left(1);
+        }
+
+        // word buffers
+        let [mut a, mut b, mut c, mut d, mut e] = self.state;
+        let mut temp: u32;
+
+        for t in 0..20 {
+            temp = a
+                .rotate_left(5)
+                .wrapping_add(b & c | !b & d)
+                .wrapping_add(e)
+                .wrapping_add(w[t])
+                .wrapping_add(K[0]);
+            e = d;
+            d = c;
+            c = b.rotate_left(30);
+            b = a;
+            a = temp;
+        }
+
+        for t in 20..40 {
+            temp = a
+                .rotate_left(5)
+                .wrapping_add(b ^ c ^ d)
+                .wrapping_add(e)
+                .wrapping_add(w[t])
+                .wrapping_add(K[1]);
+            e = d;
+            d = c;
+            c = b.rotate_left(30);
+            b = a;
+            a = temp;
+        }
+
+        for t in 40..60 {
+            temp = a
+                .rotate_left(5)
+                .wrapping_add(b & c | b & d | c & d)
+                .wrapping_add(e)
+                .wrapping_add(w[t])
+                .wrapping_add(K[2]);
+            e = d;
+            d = c;
+            c = b.rotate_left(30);
+            b = a;
+            a = temp;
+        }
+
+        for t in 60..80 {
+            temp = a
+                .rotate_left(5)
+                .wrapping_add(b ^ c ^ d)
+                .wrapping_add(e)
+                .wrapping_add(w[t])
+                .wrapping_add(K[3]);
+            e = d;
+            d = c;
+            c = b.rotate_left(30);
+            b = a;
+            a = temp;
+        }
+
+        self.state[0] = self.state[0].wrapping_add(a);
+        self.state[1] = self.state[1].wrapping_add(b);
+        self.state[2] = self.state[2].wrapping_add(c);
+        self.state[3] = self.state[3].wrapping_add(d);
+        self.state[4] = self.state[4].wrapping_add(e);
+
         self.message_length += 512;
     }
 }
