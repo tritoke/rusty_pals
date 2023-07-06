@@ -1,5 +1,4 @@
 use rusty_pals::crypto::aes::{decrypt, Aes128, Mode};
-use rusty_pals::crypto::pad::PaddingError;
 use rusty_pals::encoding::{Decodable, DecodingError};
 use rusty_pals::rand::{Mt19937, Rng32};
 use rusty_pals::xor::XorError;
@@ -9,9 +8,7 @@ use std::str::Utf8Error;
 pub enum ChallengeError {
     DecodingError(DecodingError),
     XorError(XorError),
-    PaddingError(PaddingError),
     Utf8Error(Utf8Error),
-    Custom(String),
 }
 
 impl std::fmt::Display for ChallengeError {
@@ -34,21 +31,9 @@ impl From<XorError> for ChallengeError {
     }
 }
 
-impl From<PaddingError> for ChallengeError {
-    fn from(value: PaddingError) -> Self {
-        Self::PaddingError(value)
-    }
-}
-
 impl From<Utf8Error> for ChallengeError {
     fn from(value: Utf8Error) -> Self {
         Self::Utf8Error(value)
-    }
-}
-
-impl From<String> for ChallengeError {
-    fn from(value: String) -> Self {
-        Self::Custom(value)
     }
 }
 
