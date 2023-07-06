@@ -1,7 +1,58 @@
-use anyhow::Result;
 use rusty_pals::crypto::aes::{decrypt, Aes128, Mode};
-use rusty_pals::encoding::Decodable;
+use rusty_pals::crypto::pad::PaddingError;
+use rusty_pals::encoding::{Decodable, DecodingError};
 use rusty_pals::rand::{Mt19937, Rng32};
+use rusty_pals::xor::XorError;
+use std::str::Utf8Error;
+
+#[derive(Debug, Clone)]
+pub enum ChallengeError {
+    DecodingError(DecodingError),
+    XorError(XorError),
+    PaddingError(PaddingError),
+    Utf8Error(Utf8Error),
+    Custom(String),
+}
+
+impl std::fmt::Display for ChallengeError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{self:?}")
+    }
+}
+
+impl std::error::Error for ChallengeError {}
+
+impl From<DecodingError> for ChallengeError {
+    fn from(value: DecodingError) -> Self {
+        Self::DecodingError(value)
+    }
+}
+
+impl From<XorError> for ChallengeError {
+    fn from(value: XorError) -> Self {
+        Self::XorError(value)
+    }
+}
+
+impl From<PaddingError> for ChallengeError {
+    fn from(value: PaddingError) -> Self {
+        Self::PaddingError(value)
+    }
+}
+
+impl From<Utf8Error> for ChallengeError {
+    fn from(value: Utf8Error) -> Self {
+        Self::Utf8Error(value)
+    }
+}
+
+impl From<String> for ChallengeError {
+    fn from(value: String) -> Self {
+        Self::Custom(value)
+    }
+}
+
+pub type ChallengeResult<T> = Result<T, ChallengeError>;
 
 mod chal17 {
     use rusty_pals::crypto::{
@@ -139,7 +190,7 @@ mod chal17 {
 }
 
 #[test]
-fn challenge18() -> Result<()> {
+fn challenge18() -> ChallengeResult<()> {
     let enc =
         "L77na/nrFsKvynd6HzOoG7GHTLXsTVu9qvY/2syLXzhPweyyMTJULu/6/kXX0KSvoOLSFQ==".decode_b64()?;
 
@@ -154,27 +205,27 @@ fn challenge18() -> Result<()> {
 
 #[allow(unused, unreachable_code)]
 mod chall19 {
-    use anyhow::Result;
+    use crate::ChallengeResult;
     use rusty_pals::crypto::aes::{encrypt, Aes128, Iv, Mode};
-    use rusty_pals::encoding::{Decodable, Encodable};
+    use rusty_pals::encoding::{Decodable, DecodingError, Encodable};
     use rusty_pals::rand::{Rng32, XorShift32};
     use rusty_pals::xor::xor_blocks;
 
     // I don't like this challenge, it makes me sad
     // #[test]
-    fn challenge19() -> Result<()> {
+    fn challenge19() -> ChallengeResult<()> {
         let key = Aes128::new(&XorShift32::from_seed(42).gen_array());
 
         let true_pts: Vec<Vec<u8>> = include_str!("files/19.txt")
             .lines()
             .map(|line| line.decode_b64())
-            .collect::<Result<_>>()?;
+            .collect::<Result<_, _>>()?;
 
         // generate the ciphertexts
         let cts: Vec<Vec<u8>> = true_pts
             .iter()
             .map(|pt| Ok(encrypt(pt, &key, Iv::Nonce(0), Mode::CTR)))
-            .collect::<Result<_>>()?;
+            .collect::<ChallengeResult<_>>()?;
 
         let ct_refs: Vec<&[u8]> = cts.iter().map(AsRef::as_ref).collect();
         let pts = attack(ct_refs.as_ref())?;
@@ -184,7 +235,7 @@ mod chall19 {
         Ok(())
     }
 
-    fn attack(cts: &[&[u8]]) -> Result<Vec<Vec<u8>>> {
+    fn attack(cts: &[&[u8]]) -> ChallengeResult<Vec<Vec<u8>>> {
         for (&ct1, &ct2) in cts.iter().zip(cts.iter().skip(1)) {
             let cl = usize::min(ct1.len(), ct2.len());
             let xorred = xor_blocks(&ct1[..cl], &ct2[..cl])?;
@@ -195,26 +246,26 @@ mod chall19 {
 }
 
 mod chall20 {
-    use anyhow::{anyhow, Result};
+    use crate::ChallengeResult;
     use rusty_pals::crypto::aes::{encrypt, Aes128, Iv, Mode};
     use rusty_pals::encoding::Decodable;
     use rusty_pals::rand::{Rng32, XorShift32};
     use rusty_pals::xor::{break_repeating_key_xor, xor_blocks};
 
     #[test]
-    fn challenge20() -> Result<()> {
+    fn challenge20() -> ChallengeResult<()> {
         let key = Aes128::new(&XorShift32::from_seed(42).gen_array());
 
         let true_pts: Vec<Vec<u8>> = include_str!("files/19.txt")
             .lines()
             .map(|line| line.decode_b64())
-            .collect::<Result<_>>()?;
+            .collect::<Result<_, _>>()?;
 
         // generate the ciphertexts
         let cts: Vec<Vec<u8>> = true_pts
             .iter()
             .map(|pt| Ok(encrypt(pt, &key, Iv::Nonce(0), Mode::CTR)))
-            .collect::<Result<_>>()?;
+            .collect::<ChallengeResult<_>>()?;
 
         let ct_refs: Vec<&[u8]> = cts.iter().map(AsRef::as_ref).collect();
         let pts = attack(ct_refs.as_ref())?;
@@ -222,20 +273,20 @@ mod chall20 {
         for (pt, mut true_pt) in pts.into_iter().zip(true_pts.into_iter()) {
             // assert the pts are correct up to their length
             true_pt.truncate(pt.len());
-            let pt = String::from_utf8(pt)?;
-            let true_pt = String::from_utf8(true_pt)?;
+            let pt = std::str::from_utf8(&pt)?;
+            let true_pt = std::str::from_utf8(&true_pt)?;
             assert!(pt.eq_ignore_ascii_case(&true_pt));
         }
 
         Ok(())
     }
 
-    fn attack(cts: &[&[u8]]) -> Result<Vec<Vec<u8>>> {
+    fn attack(cts: &[&[u8]]) -> ChallengeResult<Vec<Vec<u8>>> {
         let common_length = cts
             .iter()
             .map(|x| x.len())
             .min()
-            .ok_or_else(|| anyhow!("No ciphertexts???"))?;
+            .expect("Found no ciphertexts");
 
         let concat_cts: Vec<u8> = cts
             .iter()
@@ -246,7 +297,8 @@ mod chall20 {
 
         cts.iter()
             .map(|ct| xor_blocks(&ct[..common_length], &key))
-            .collect()
+            .collect::<Result<_, _>>()
+            .map_err(Into::into)
     }
 }
 
@@ -368,7 +420,7 @@ mod chall23 {
 
     fn attack(outputs: &[u32]) -> Result<Mt19937> {
         let raw_state: Vec<u32> = outputs.iter().copied().map(untemper).collect();
-        Mt19937::from_state(try_cast_as_array(&raw_state[..])?)
+        Ok(Mt19937::from_state(try_cast_as_array(&raw_state[..])?))
     }
 }
 

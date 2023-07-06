@@ -1,5 +1,61 @@
+use rusty_pals::crypto::pad::PaddingError;
+use rusty_pals::encoding::DecodingError;
+use rusty_pals::xor::XorError;
+use std::str::Utf8Error;
+use std::string::FromUtf8Error;
+
+#[derive(Debug, Clone)]
+pub enum ChallengeError {
+    DecodingError(DecodingError),
+    XorError(XorError),
+    PaddingError(PaddingError),
+    Utf8Error(Utf8Error),
+    FromUtf8Error(FromUtf8Error),
+    Custom(String),
+}
+
+impl std::fmt::Display for ChallengeError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{self:?}")
+    }
+}
+
+impl std::error::Error for ChallengeError {}
+
+impl From<DecodingError> for ChallengeError {
+    fn from(value: DecodingError) -> Self {
+        Self::DecodingError(value)
+    }
+}
+
+impl From<XorError> for ChallengeError {
+    fn from(value: XorError) -> Self {
+        Self::XorError(value)
+    }
+}
+
+impl From<PaddingError> for ChallengeError {
+    fn from(value: PaddingError) -> Self {
+        Self::PaddingError(value)
+    }
+}
+
+impl From<Utf8Error> for ChallengeError {
+    fn from(value: Utf8Error) -> Self {
+        Self::Utf8Error(value)
+    }
+}
+
+impl From<FromUtf8Error> for ChallengeError {
+    fn from(value: FromUtf8Error) -> Self {
+        Self::FromUtf8Error(value)
+    }
+}
+
+pub type ChallengeResult<T> = Result<T, ChallengeError>;
+
 mod chall25 {
-    use anyhow::Result;
+    use crate::ChallengeResult;
     use rusty_pals::crypto::aes::{decrypt, encrypt, Aes128, Iv, Mode};
     use rusty_pals::rand::{Rng32, XorShift32};
     use rusty_pals::xor::{xor_blocks, xor_with_key};
@@ -36,7 +92,7 @@ mod chall25 {
     }
 
     #[test]
-    fn challenge25() -> Result<()> {
+    fn challenge25() -> ChallengeResult<()> {
         let chall = Challenge::new();
         let pt = attack(&chall)?;
         assert_eq!(pt, include_str!("files/7_correct.txt"));
@@ -44,7 +100,7 @@ mod chall25 {
         Ok(())
     }
 
-    fn attack(chall: &Challenge) -> Result<String> {
+    fn attack(chall: &Challenge) -> ChallengeResult<String> {
         let ct = chall.ciphertext.clone();
         let key_xor_a = chall.edit(0, vec![b'A'; ct.len()]);
         let keystream = xor_with_key(key_xor_a, "A")?;
@@ -53,7 +109,7 @@ mod chall25 {
 }
 
 mod chall26 {
-    use anyhow::Result;
+    use crate::ChallengeResult;
     use rusty_pals::crypto::aes::{decrypt, encrypt, Aes128, Mode};
     use rusty_pals::rand::{Rng32, XorShift32};
     use rusty_pals::util::cast_as_array;
@@ -104,7 +160,7 @@ mod chall26 {
     }
 
     #[test]
-    fn challenge26() -> Result<()> {
+    fn challenge26() -> ChallengeResult<()> {
         let mut chall = Challenge::new();
 
         let manipulated = attack(&mut chall);
@@ -132,7 +188,6 @@ mod chall26 {
 }
 
 mod chall27 {
-    use anyhow::Result;
     use rusty_pals::crypto::{
         aes::{decrypt, encrypt, Aes, Aes128, Mode},
         pad,
@@ -342,10 +397,7 @@ mod chall30 {
 
 mod chall31 {
     use rusty_pals::crypto::hmac::Hmac;
-    use rusty_pals::crypto::{
-        sha1::{Digest, Sha1},
-        Hasher,
-    };
+    use rusty_pals::crypto::sha1::{Digest, Sha1};
     use rusty_pals::rand::{Rng32, XorShift32};
     use std::time::Duration;
 
@@ -425,11 +477,7 @@ mod chall31 {
 
 mod chall32 {
     use rusty_pals::crypto::hmac::Hmac;
-    use rusty_pals::crypto::{
-        sha1::{Digest, Sha1},
-        Hasher,
-    };
-    use rusty_pals::fit::pearson_correlation;
+    use rusty_pals::crypto::sha1::{Digest, Sha1};
     use rusty_pals::rand::{Rng32, XorShift32};
     use std::time::Duration;
 

@@ -1,13 +1,12 @@
+use crate::encoding::DecodingError;
 use crate::util::try_cast_as_arrays;
-use anyhow::{anyhow, ensure, Result};
 
 /// Parse an input string as encoding
 /// ```
 /// use rusty_pals::encoding::parse_hex;
 /// assert_eq!(parse_hex("1234").unwrap(), &[0x12, 0x34]);
 /// ```
-pub fn parse_hex(input: &str) -> Result<Vec<u8>> {
-    ensure!(input.len() % 2 == 0, "Input string must be an even length.");
+pub fn parse_hex(input: &str) -> Result<Vec<u8>, DecodingError> {
     try_cast_as_arrays(input.as_bytes())?
         .iter()
         .map(|&[h, l]| Ok(h2b(h)? << 4 | h2b(l)?))
@@ -31,15 +30,12 @@ pub fn to_hex(input: impl AsRef<[u8]>) -> String {
 }
 
 /// Convert a byte from a encoding character to its value in encoding
-fn h2b(b: u8) -> Result<u8> {
+fn h2b(b: u8) -> Result<u8, DecodingError> {
     match b {
         b'0'..=b'9' => Ok(b - b'0'),
         b'A'..=b'F' => Ok(b - b'A' + 10),
         b'a'..=b'f' => Ok(b - b'a' + 10),
-        x => Err(anyhow!(
-            "Unrecognised encoding character {x:?} - {:?}",
-            x as char
-        )),
+        _ => Err(DecodingError::InvalidCharacter(b)),
     }
 }
 

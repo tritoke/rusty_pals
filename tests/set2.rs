@@ -1,12 +1,63 @@
-use anyhow::Result;
+use rusty_pals::crypto::pad::PaddingError;
 use rusty_pals::crypto::{
     aes::{decrypt, Aes128, Mode},
     pad,
 };
-use rusty_pals::encoding::Decodable;
+use rusty_pals::encoding::{Decodable, DecodingError};
+use rusty_pals::xor::XorError;
+use std::str::Utf8Error;
+
+#[derive(Debug, Clone)]
+pub enum ChallengeError {
+    DecodingError(DecodingError),
+    XorError(XorError),
+    PaddingError(PaddingError),
+    Utf8Error(Utf8Error),
+    Custom(String),
+}
+
+impl std::fmt::Display for ChallengeError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{self:?}")
+    }
+}
+
+impl std::error::Error for ChallengeError {}
+
+impl From<DecodingError> for ChallengeError {
+    fn from(value: DecodingError) -> Self {
+        Self::DecodingError(value)
+    }
+}
+
+impl From<XorError> for ChallengeError {
+    fn from(value: XorError) -> Self {
+        Self::XorError(value)
+    }
+}
+
+impl From<PaddingError> for ChallengeError {
+    fn from(value: PaddingError) -> Self {
+        Self::PaddingError(value)
+    }
+}
+
+impl From<Utf8Error> for ChallengeError {
+    fn from(value: Utf8Error) -> Self {
+        Self::Utf8Error(value)
+    }
+}
+
+impl From<String> for ChallengeError {
+    fn from(value: String) -> Self {
+        Self::Custom(value)
+    }
+}
+
+pub type ChallengeResult<T> = Result<T, ChallengeError>;
 
 #[test]
-fn challenge9() -> Result<()> {
+fn challenge9() -> ChallengeResult<()> {
     let input = "YELLOW SUBMARINE";
     let padded = pad::pkcs7(input, 20);
     assert_eq!(padded, b"YELLOW SUBMARINE\x04\x04\x04\x04");
@@ -15,7 +66,7 @@ fn challenge9() -> Result<()> {
 }
 
 #[test]
-fn challenge10() -> Result<()> {
+fn challenge10() -> ChallengeResult<()> {
     let mut input = include_str!("files/10.txt").to_string();
     input.retain(|c| c != '\n');
     let data = input.decode_b64()?;
@@ -29,7 +80,7 @@ fn challenge10() -> Result<()> {
 }
 
 mod chal11 {
-    use anyhow::Result;
+    use super::ChallengeResult;
     use rusty_pals::crypto::aes::Iv;
     use rusty_pals::crypto::{
         aes::{encrypt, Aes, Aes128, Mode},
@@ -38,7 +89,10 @@ mod chal11 {
     use rusty_pals::rand::{Rng32, XorShift32};
     use rusty_pals::util::{self, cast_as_arrays};
 
-    fn encryption_oracle(rng: &mut XorShift32, input: impl AsRef<[u8]>) -> Result<(bool, Vec<u8>)> {
+    fn encryption_oracle(
+        rng: &mut XorShift32,
+        input: impl AsRef<[u8]>,
+    ) -> ChallengeResult<(bool, Vec<u8>)> {
         let n_before = 5 + (rng.gen() % 5) as usize;
         let n_after = 5 + (rng.gen() % 5) as usize;
         let mut data = rng.gen_bytes(n_before);
@@ -68,7 +122,7 @@ mod chal11 {
     }
 
     #[test]
-    fn challenge11() -> Result<()> {
+    fn challenge11() -> ChallengeResult<()> {
         let mut count_correct = 0;
         let num_rounds = 10000;
         let mut rng = XorShift32::new();
@@ -85,7 +139,7 @@ mod chal11 {
 }
 
 mod chal12 {
-    use anyhow::{anyhow, ensure, Result};
+    use super::ChallengeResult;
     use rusty_pals::crypto::aes::{encrypt, Aes, Aes128, Iv, Mode};
     use rusty_pals::crypto::oracle::EncryptionOracle;
     use rusty_pals::crypto::pad;
@@ -95,7 +149,7 @@ mod chal12 {
     use std::collections::{HashMap, HashSet, VecDeque};
 
     #[test]
-    fn challenge12() -> Result<()> {
+    fn challenge12() -> ChallengeResult<()> {
         let mut rng = XorShift32::new();
         let oracle = EcbOracle::new(&mut rng)?;
 
@@ -110,7 +164,7 @@ mod chal12 {
         Ok(())
     }
 
-    fn attack(oracle: impl EncryptionOracle) -> Result<Vec<u8>> {
+    fn attack(oracle: impl EncryptionOracle) -> ChallengeResult<Vec<u8>> {
         const BLKSZ: usize = Aes128::BLOCK_SIZE;
 
         // Step 1. find the block size
@@ -131,10 +185,9 @@ mod chal12 {
         // out input is of the form user-string || secret, so we can provide a string of 2*block_size
         // bytes to get two identical blocks at the beginning
         let enc = oracle.encrypt("A".repeat(2 * block_size));
-        ensure!(
-            &enc[0..BLKSZ] == &enc[BLKSZ..2 * BLKSZ],
-            "Oracle is not using the ECB crypto mode."
-        );
+        if &enc[0..BLKSZ] != &enc[BLKSZ..2 * BLKSZ] {
+            panic!("Oracle is not using the ECB crypto mode.");
+        }
 
         // Step 3/4: craft the block mappings
         let mut prefix_mapper = PrefixMapper::<BLKSZ>::new();
@@ -146,7 +199,7 @@ mod chal12 {
         let block = &enc[..block_size];
         let decoded = prefix_mapper
             .get(block)
-            .ok_or_else(|| anyhow!("Failed to recover byte from secret."))?;
+            .expect("Failed to recover byte from secret.");
 
         // Step 6: Repeat :)
         let mut dec = vec![decoded];
@@ -180,7 +233,7 @@ mod chal12 {
     }
 
     impl EcbOracle {
-        fn new(rng: &mut XorShift32) -> Result<Self> {
+        fn new(rng: &mut XorShift32) -> ChallengeResult<Self> {
             let secret_b64 = "Um9sbGluJyBpbiBteSA1LjAKV2l0aCBteSByYWctdG9wIGRvd24gc28gbXkg\
             aGFpciBjYW4gYmxvdwpUaGUgZ2lybGllcyBvbiBzdGFuZGJ5IHdhdmluZyBq\
             dXN0IHRvIHNheSBoaQpEaWQgeW91IHN0b3A/IE5vLCBJIGp1c3QgZHJvdmUg\
@@ -220,7 +273,7 @@ mod chal12 {
             &mut self,
             prefix: &[u8; BLKSZ],
             oracle: &impl EncryptionOracle,
-        ) -> Result<()> {
+        ) -> ChallengeResult<()> {
             let mut block = *prefix;
             // ignore the last byte of the prefix
             block[BLKSZ - 1] = 0;
@@ -249,7 +302,8 @@ mod chal12 {
 }
 
 mod chal13 {
-    use anyhow::{anyhow, bail, Error, Result};
+    use super::ChallengeResult;
+    use crate::ChallengeError;
     use rusty_pals::crypto::aes::{decrypt, encrypt, Aes, Aes128, Iv, Mode};
     use rusty_pals::crypto::pad::{pkcs7_into, pkcs7_unpad_owned};
     use rusty_pals::encoding::Encodable;
@@ -282,16 +336,16 @@ mod chal13 {
     }
 
     impl FromStr for CookieJar {
-        type Err = Error;
+        type Err = ChallengeError;
 
-        fn from_str(s: &str) -> Result<Self> {
+        fn from_str(s: &str) -> ChallengeResult<Self> {
             let mut cookie_jar = CookieJar::new();
 
             for cookie in s.split('&') {
                 if let Some((k, v)) = cookie.split_once('=') {
                     cookie_jar.add_cookie(k, v);
                 } else {
-                    bail!("Failed to parse key/value pair {cookie:?}");
+                    return Err(format!("Failed to parse key/value pair {cookie:?}").into());
                 }
             }
 
@@ -381,17 +435,16 @@ mod chal13 {
             encrypt(data, &self.key, Iv::Empty, Mode::ECB)
         }
 
-        fn decrypt_profile(&self, data: Vec<u8>) -> Result<CookieJar> {
+        fn decrypt_profile(&self, data: Vec<u8>) -> ChallengeResult<CookieJar> {
             let mut dec = decrypt(data, &self.key, Iv::Empty, Mode::ECB);
-            std::str::from_utf8(&dec)?;
             pkcs7_unpad_owned(&mut dec)?;
-            let profile = String::from_utf8(dec)?;
+            let profile = String::from_utf8(dec).expect("Failed to decrypt -");
             profile.parse()
         }
     }
 
     #[test]
-    fn challenge13() -> Result<()> {
+    fn challenge13() -> ChallengeResult<()> {
         let mut rng = XorShift32::new();
         let mut profile_manager = ProfileManager::new(&mut rng);
 
@@ -404,14 +457,14 @@ mod chal13 {
         Ok(())
     }
 
-    fn attack(pm: &mut ProfileManager) -> Result<Vec<u8>> {
+    fn attack(pm: &mut ProfileManager) -> ChallengeResult<Vec<u8>> {
         // Step 1: Get the plaintext for the email we are creating a profile for
         let plaintext = profile_for("");
 
         // Step 2: find the position where we can encrypt a block of 16 characters
         let input_start = &plaintext
             .find("email=")
-            .ok_or_else(|| anyhow!("Plaintext didn't contain email=, unable to find position"))?
+            .expect("Plaintext didn't contain email=, unable to find position")
             + "email=".len();
         let padding = if input_start % Aes128::BLOCK_SIZE != 0 {
             Aes128::BLOCK_SIZE - (input_start % Aes128::BLOCK_SIZE)
@@ -434,7 +487,7 @@ mod chal13 {
         // Step 4: construct a messsage padded such that role= lies just before a chunk boundary
         let user_pos = &plaintext
             .find("user")
-            .ok_or_else(|| anyhow!("Plaintext didn't contain \"user\", unable to find position"))?;
+            .expect("Plaintext didn't contain \"user\", unable to find position");
         let padding = Aes128::BLOCK_SIZE - (user_pos % Aes128::BLOCK_SIZE);
         let mut enc = pm.encrypt_profile("A".repeat(padding));
 
@@ -448,7 +501,7 @@ mod chal13 {
 
 mod chal14 {
     use super::chal12::PrefixMapper;
-    use anyhow::{anyhow, ensure, Result};
+    use super::ChallengeResult;
     use rusty_pals::crypto::aes::Iv;
     use rusty_pals::crypto::{
         aes::{encrypt, Aes, Aes128, Mode},
@@ -468,7 +521,7 @@ mod chal14 {
     }
 
     impl EcbOracle {
-        fn new(rng: &mut XorShift32) -> Result<Self> {
+        fn new(rng: &mut XorShift32) -> ChallengeResult<Self> {
             let secret_b64 = "Um9sbGluJyBpbiBteSA1LjAKV2l0aCBteSByYWctdG9wIGRvd24gc28gbXkg\
             aGFpciBjYW4gYmxvdwpUaGUgZ2lybGllcyBvbiBzdGFuZGJ5IHdhdmluZyBq\
             dXN0IHRvIHNheSBoaQpEaWQgeW91IHN0b3A/IE5vLCBJIGp1c3QgZHJvdmUg\
@@ -525,7 +578,7 @@ mod chal14 {
     }
 
     #[test]
-    fn challenge14() -> Result<()> {
+    fn challenge14() -> ChallengeResult<()> {
         let mut rng = XorShift32::new();
         let oracle = EcbOracle::new(&mut rng)?;
 
@@ -540,7 +593,7 @@ mod chal14 {
         Ok(())
     }
 
-    fn attack(oracle: impl EncryptionOracle) -> Result<Vec<u8>> {
+    fn attack(oracle: impl EncryptionOracle) -> ChallengeResult<Vec<u8>> {
         const BLKSZ: usize = Aes128::BLOCK_SIZE;
 
         // Step 1. find the block size
@@ -564,11 +617,11 @@ mod chal14 {
         let pos = blocks
             .iter()
             .zip(blocks.iter().skip(1))
-            .position(|(a, b)| a == b);
-        ensure!(pos.is_some(), "Oracle is not using the ECB crypto mode.");
+            .position(|(a, b)| a == b)
+            .expect("Oracle is not using the ECB crypto mode.");
 
         // Step 2.5 work out padding and offsets to ignore the prefixed data
-        let controlled_block = pos.unwrap() * block_size;
+        let controlled_block = pos * block_size;
         let mut padding = Vec::new();
         // keep pushing characters into the padding until the controlled block matches the original one
         loop {
@@ -598,7 +651,7 @@ mod chal14 {
         let block = &enc[..block_size];
         let decoded = prefix_mapper
             .get(block)
-            .ok_or_else(|| anyhow!("Failed to recover byte from secret."))?;
+            .expect("Failed to recover byte from secret.");
 
         // Step 6: Repeat :)
         let mut dec = vec![decoded];
@@ -634,7 +687,7 @@ fn challenge15() {
 }
 
 mod chall16 {
-    use anyhow::Result;
+    use super::ChallengeResult;
     use rusty_pals::crypto::{
         aes::{decrypt, encrypt, Aes, Aes128, Mode},
         pad,
@@ -654,7 +707,7 @@ mod chall16 {
             let mut rng = XorShift32::new();
             Self {
                 key: Aes128::new(&rng.gen_array()),
-                rng: rng,
+                rng,
             }
         }
 
@@ -689,7 +742,7 @@ mod chall16 {
     }
 
     #[test]
-    fn test_correct_output_forbidden() -> Result<()> {
+    fn test_correct_output_forbidden() -> ChallengeResult<()> {
         let mut chall = Challenge::new();
         let enc = chall.encrypt(";admin=true;");
         assert!(!chall.decrypt(enc));
@@ -698,7 +751,7 @@ mod chall16 {
     }
 
     #[test]
-    fn challenge16() -> Result<()> {
+    fn challenge16() -> ChallengeResult<()> {
         let mut chall = Challenge::new();
 
         let manipulated = attack(&mut chall);

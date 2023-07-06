@@ -1,4 +1,17 @@
-use anyhow::{anyhow, ensure, Result};
+#[derive(Debug, Copy, Clone)]
+pub enum PaddingError {
+    EmptyData,
+    InsufficientData,
+    InvalidPadding,
+}
+
+impl std::fmt::Display for PaddingError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{self:?}")
+    }
+}
+
+impl std::error::Error for PaddingError {}
 
 /// Implement the PKCS#7 padding scheme
 pub fn pkcs7(data: impl AsRef<[u8]>, block_length: u8) -> Vec<u8> {
@@ -16,28 +29,26 @@ pub fn pkcs7_into(data: &mut Vec<u8>, block_length: u8) {
 }
 
 /// Implement the PKCS#7 padding scheme - unpad
-pub fn pkcs7_unpad(data: &[u8]) -> Result<&[u8]> {
-    let pad = *data
-        .last()
-        .ok_or_else(|| anyhow!("Cannot unpad empty data."))?;
-    ensure!(data.len() >= pad as usize, "Not enough data to unpad.");
-    ensure!(
-        pad != 0 && data[data.len() - pad as usize..].iter().all(|&x| x == pad),
-        "Invalid padding."
-    );
+pub fn pkcs7_unpad(data: &[u8]) -> Result<&[u8], PaddingError> {
+    let pad = *data.last().ok_or(PaddingError::EmptyData)?;
+    if data.len() < pad as usize {
+        return Err(PaddingError::InsufficientData);
+    }
+    if pad == 0 || data[data.len() - pad as usize..].iter().any(|&x| x != pad) {
+        return Err(PaddingError::InvalidPadding);
+    }
     Ok(&data[0..data.len() - pad as usize])
 }
 
 /// Implement the PKCS#7 padding scheme - unpad, unpadding a vector
-pub fn pkcs7_unpad_owned(data: &mut Vec<u8>) -> Result<()> {
-    let pad = *data
-        .last()
-        .ok_or_else(|| anyhow!("Cannot unpad empty data."))?;
-    ensure!(data.len() >= pad as usize, "Not enough data to unpad.");
-    ensure!(
-        pad != 0 && data[data.len() - pad as usize..].iter().all(|&x| x == pad),
-        "Invalid padding."
-    );
+pub fn pkcs7_unpad_owned(data: &mut Vec<u8>) -> Result<(), PaddingError> {
+    let pad = *data.last().ok_or(PaddingError::EmptyData)?;
+    if data.len() < pad as usize {
+        return Err(PaddingError::InsufficientData);
+    }
+    if pad == 0 || data[data.len() - pad as usize..].iter().any(|&x| x != pad) {
+        return Err(PaddingError::InvalidPadding);
+    }
     data.truncate(data.len() - pad as usize);
     Ok(())
 }

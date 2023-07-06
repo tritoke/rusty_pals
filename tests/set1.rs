@@ -1,5 +1,3 @@
-use anyhow::{anyhow, Result};
-
 use rusty_pals::crypto::aes::*;
 use rusty_pals::crypto::pad::*;
 use rusty_pals::encoding::*;
@@ -9,8 +7,43 @@ use rusty_pals::xor::*;
 use rusty_pals::util;
 use rusty_pals::util::cast_as_arrays;
 
+#[derive(Debug, Copy, Clone)]
+pub enum ChallengeError {
+    DecodingError(DecodingError),
+    XorError(XorError),
+    PaddingError(PaddingError),
+}
+
+impl std::fmt::Display for ChallengeError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{self:?}")
+    }
+}
+
+impl std::error::Error for ChallengeError {}
+
+impl From<DecodingError> for ChallengeError {
+    fn from(value: DecodingError) -> Self {
+        Self::DecodingError(value)
+    }
+}
+
+impl From<XorError> for ChallengeError {
+    fn from(value: XorError) -> Self {
+        Self::XorError(value)
+    }
+}
+
+impl From<PaddingError> for ChallengeError {
+    fn from(value: PaddingError) -> Self {
+        Self::PaddingError(value)
+    }
+}
+
+pub type ChallengeResult<T> = Result<T, ChallengeError>;
+
 #[test]
-fn challenge1() -> Result<()> {
+fn challenge1() -> ChallengeResult<()> {
     const INPUT: &str = "49276d206b696c6c696e6720796f757220627261696e206c696b65206120706f69736f6e6f7573206d757368726f6f6d";
 
     assert_eq!(
@@ -22,7 +55,7 @@ fn challenge1() -> Result<()> {
 }
 
 #[test]
-fn challenge2() -> Result<()> {
+fn challenge2() -> ChallengeResult<()> {
     const INPUT1: &str = "1c0111001f010100061a024b53535009181c";
     const INPUT2: &str = "686974207468652062756c6c277320657965";
 
@@ -36,7 +69,7 @@ fn challenge2() -> Result<()> {
 }
 
 #[test]
-fn challenge3() -> Result<()> {
+fn challenge3() -> ChallengeResult<()> {
     const INPUT: &str = "1b37373331363f78151b7f2b783431333d78397828372d363c78373e783a393b3736";
     let data = INPUT.decode_hex()?;
 
@@ -48,21 +81,20 @@ fn challenge3() -> Result<()> {
 }
 
 #[test]
-fn challenge4() -> Result<()> {
+fn challenge4() -> ChallengeResult<()> {
     const INPUT: &str = include_str!("files/4.txt");
     let data: Vec<Vec<u8>> = INPUT
         .lines()
         .map(Decodable::decode_hex)
-        .collect::<Result<_>>()?;
+        .collect::<Result<_, _>>()?;
 
     let plain = data
         .iter()
-        .map::<Result<Vec<u8>>, _>(|ct| {
+        .map::<ChallengeResult<_>, _>(|ct| {
             let k = break_single_xor(ct)?;
             Ok(xor_with_key(ct, [k])?)
         })
-        .filter(Result::is_ok)
-        .map(Result::unwrap)
+        .filter_map(Result::ok)
         .max_by_key(|text| score_text(text))
         .unwrap();
 
@@ -72,7 +104,7 @@ fn challenge4() -> Result<()> {
 }
 
 #[test]
-fn challenge5() -> Result<()> {
+fn challenge5() -> ChallengeResult<()> {
     const INPUT: &str = "\
         Burning 'em, if you ain't quick and nimble\n\
         I go crazy when I hear a cymbal\
@@ -88,7 +120,7 @@ fn challenge5() -> Result<()> {
 }
 
 #[test]
-fn challenge6() -> Result<()> {
+fn challenge6() -> ChallengeResult<()> {
     let mut input: String = include_str!("files/6.txt").to_string();
     input.retain(|c| c != '\n');
     let data = b64decode(input)?;
@@ -100,7 +132,7 @@ fn challenge6() -> Result<()> {
 }
 
 #[test]
-fn challenge7() -> Result<()> {
+fn challenge7() -> ChallengeResult<()> {
     let mut input = include_str!("files/7.txt").to_string();
     input.retain(|c| c != '\n');
     let data = b64decode(input)?;
@@ -114,16 +146,16 @@ fn challenge7() -> Result<()> {
 }
 
 #[test]
-fn challenge8() -> Result<()> {
+fn challenge8() -> ChallengeResult<()> {
     let lines: Vec<Vec<u8>> = include_str!("files/8.txt")
         .lines()
         .map(parse_hex)
-        .collect::<Result<_>>()?;
+        .collect::<Result<_, DecodingError>>()?;
 
     let prob_ecb = lines
         .iter()
         .find(|line| util::has_duplicate(cast_as_arrays::<_, 16>(line)))
-        .ok_or_else(|| anyhow!("Couldn't find line with duplicate blocks."))?;
+        .expect("Couldn't find line with duplicate blocks.");
 
     assert_eq!(prob_ecb, &lines[132]);
 

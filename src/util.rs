@@ -1,7 +1,21 @@
-use anyhow::{anyhow, ensure, Result};
+use std::array::TryFromSliceError;
 use std::collections::HashSet;
 use std::hash::Hash;
 use std::slice;
+
+#[derive(Debug, Copy, Clone)]
+pub enum CastError {
+    CastFail(TryFromSliceError),
+    RaggedSlice,
+}
+
+impl std::fmt::Display for CastError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{self:?}")
+    }
+}
+
+impl std::error::Error for CastError {}
 
 /// Detect whether an iterator contains a duplicate element
 pub fn has_duplicate<T>(it: impl IntoIterator<Item = T>) -> bool
@@ -72,29 +86,33 @@ pub fn cast_as_arrays_mut<T, const N: usize>(slice: &mut [T]) -> &mut [[T; N]] {
 
 /// Cast a slice to an array, panics if the slice is not long enough
 #[rustfmt::skip]
-pub fn try_cast_as_array<T, const N: usize>(slice: &[T]) -> Result<&[T; N]> {
-    slice.try_into().map_err(|e| anyhow!("Failed to cast as array - {e:?}"))
+pub fn try_cast_as_array<T, const N: usize>(slice: &[T]) -> Result<&[T; N], CastError> {
+    slice.try_into().map_err(CastError::CastFail)
 }
 
 /// Cast a mutable slice to a mutable array, panics if the slice is not long enough
 #[rustfmt::skip]
-pub fn try_cast_as_array_mut<T, const N: usize>(slice: &mut [T]) -> Result<&mut [T; N]> {
-    slice.try_into().map_err(|e| anyhow!("Failed to cast as array - {e:?}"))
+pub fn try_cast_as_array_mut<T, const N: usize>(slice: &mut [T]) -> Result<&mut [T; N], CastError> {
+    slice.try_into().map_err(CastError::CastFail)
 }
 
 /// Cast a slice to a slice of arrays
 #[rustfmt::skip]
-pub fn try_cast_as_arrays<T, const N: usize>(slice: &[T]) -> Result<&[[T; N]]> {
+pub fn try_cast_as_arrays<T, const N: usize>(slice: &[T]) -> Result<&[[T; N]], CastError> {
     let (arrays, rmdr) = as_chunks(slice);
-    ensure!(rmdr.is_empty(), "Slice length does not evenly divide into arrays.");
+    if !rmdr.is_empty() {
+        return Err(CastError::RaggedSlice);
+    }
     Ok(arrays)
 }
 
 /// Cast a mutable slice to a mutable slice of arrays
 #[rustfmt::skip]
-pub fn try_cast_as_arrays_mut<T, const N: usize>(slice: &mut [T]) -> Result<&mut [[T; N]]> {
+pub fn try_cast_as_arrays_mut<T, const N: usize>(slice: &mut [T]) -> Result<&mut [[T; N]], CastError> {
     let (arrays, rmdr) = as_chunks_mut(slice);
-    ensure!(rmdr.is_empty(), "Slice length does not evenly divide into arrays.");
+    if !rmdr.is_empty() {
+        return Err(CastError::RaggedSlice);
+    }
     Ok(arrays)
 }
 
@@ -176,7 +194,7 @@ mod tests {
     }
 
     #[test]
-    fn test_try_cast_as_arrays() -> Result<()> {
+    fn test_try_cast_as_arrays() -> Result<(), CastError> {
         let input: Vec<u32> = (0..16).collect();
         let arrays: &[[u32; 4]] = try_cast_as_arrays(&input[..])?;
         assert_eq!(
@@ -194,7 +212,7 @@ mod tests {
     }
 
     #[test]
-    fn test_try_cast_as_arrays_mut() -> Result<()> {
+    fn test_try_cast_as_arrays_mut() -> Result<(), CastError> {
         let mut input: Vec<u8> = (0..16).collect();
         let arrays: &mut [[u8; 4]] = try_cast_as_arrays_mut(&mut input[..])?;
         arrays[0] = [0xFF; 4];
@@ -213,7 +231,7 @@ mod tests {
     }
 
     #[test]
-    fn test_try_cast_as_array() -> Result<()> {
+    fn test_try_cast_as_array() -> Result<(), CastError> {
         let input: Vec<u8> = (0..16).collect();
         let arrays: &[u8; 16] = try_cast_as_array(&input[..])?;
         assert_eq!(
@@ -230,7 +248,7 @@ mod tests {
     }
 
     #[test]
-    fn test_try_cast_as_array_mut() -> Result<()> {
+    fn test_try_cast_as_array_mut() -> Result<(), CastError> {
         let mut input: Vec<u8> = (0..16).collect();
         let arrays: &mut [u8; 16] = try_cast_as_array_mut(&mut input[..])?;
         arrays[0] = 0xFF;

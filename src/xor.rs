@@ -1,24 +1,36 @@
 use crate::fit::{edit_distance, score_text};
-use anyhow::{anyhow, ensure, Result};
 use std::arch::x86_64::{_mm_loadu_si128, _mm_storeu_si128, _mm_xor_si128};
 use std::ops::RangeInclusive;
+
+#[derive(Debug, Copy, Clone)]
+pub enum XorError {
+    BlockLengthMismatch(usize, usize),
+    OutputTooSmall,
+    InputTooSmall,
+    EmptyKey,
+}
+
+impl std::fmt::Display for XorError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{self:?}")
+    }
+}
+
+impl std::error::Error for XorError {}
 
 /// XOR two blocks of data together
 /// ```
 /// use rusty_pals::xor::xor_blocks;
 /// assert_eq!(xor_blocks("abc", "def").unwrap(), [5, 7, 5]);
 /// ```
-pub fn xor_blocks(a: impl AsRef<[u8]>, b: impl AsRef<[u8]>) -> Result<Vec<u8>> {
+pub fn xor_blocks(a: impl AsRef<[u8]>, b: impl AsRef<[u8]>) -> Result<Vec<u8>, XorError> {
     let a = a.as_ref();
     let b = b.as_ref();
 
     // ensure we have the same length blocks
-    ensure!(
-        a.len() == b.len(),
-        "Mismatch in block length: {} != {}",
-        a.len(),
-        b.len()
-    );
+    if a.len() != b.len() {
+        return Err(XorError::BlockLengthMismatch(a.len(), b.len()));
+    }
 
     let xorred = a.iter().zip(b.iter()).map(|(x, y)| x ^ y).collect();
 
@@ -32,20 +44,23 @@ pub fn xor_blocks(a: impl AsRef<[u8]>, b: impl AsRef<[u8]>) -> Result<Vec<u8>> {
 /// assert!(xor_blocks_into("abc", "def", out.as_mut_slice()).is_ok());
 /// assert_eq!(out, [5, 7, 5]);
 /// ```
-pub fn xor_blocks_into(a: impl AsRef<[u8]>, b: impl AsRef<[u8]>, out: &mut [u8]) -> Result<()> {
+pub fn xor_blocks_into(
+    a: impl AsRef<[u8]>,
+    b: impl AsRef<[u8]>,
+    out: &mut [u8],
+) -> Result<(), XorError> {
     let a = a.as_ref();
     let b = b.as_ref();
 
     // ensure we have the same length blocks
-    ensure!(
-        a.len() == b.len(),
-        "Mismatch in block length: {} != {}",
-        a.len(),
-        b.len()
-    );
+    if a.len() != b.len() {
+        return Err(XorError::BlockLengthMismatch(a.len(), b.len()));
+    }
 
     // ensure the output has enough space
-    ensure!(a.len() <= out.len(), "Insuffient space in output slice.",);
+    if a.len() > out.len() {
+        return Err(XorError::OutputTooSmall);
+    }
 
     let xorred = a.iter().zip(b.iter()).map(|(x, y)| x ^ y);
     for (x, y) in out.iter_mut().zip(xorred) {
@@ -62,16 +77,13 @@ pub fn xor_blocks_into(a: impl AsRef<[u8]>, b: impl AsRef<[u8]>, out: &mut [u8])
 /// assert!(xor_blocks_together("abc", out.as_mut_slice()).is_ok());
 /// assert_eq!(out, [5, 7, 5]);
 /// ```
-pub fn xor_blocks_together(a: impl AsRef<[u8]>, b: &mut [u8]) -> Result<()> {
+pub fn xor_blocks_together(a: impl AsRef<[u8]>, b: &mut [u8]) -> Result<(), XorError> {
     let a = a.as_ref();
 
     // ensure we have the same length blocks
-    ensure!(
-        a.len() == b.len(),
-        "Mismatch in block length: {} != {}",
-        a.len(),
-        b.len()
-    );
+    if a.len() != b.len() {
+        return Err(XorError::BlockLengthMismatch(a.len(), b.len()));
+    }
 
     for (x, y) in a.iter().zip(b.iter_mut()) {
         *y ^= *x;
@@ -85,11 +97,13 @@ pub fn xor_blocks_together(a: impl AsRef<[u8]>, b: &mut [u8]) -> Result<()> {
 /// use rusty_pals::xor::xor_with_key;
 /// assert_eq!(xor_with_key("abc", "a").unwrap(), [0, 3, 2]);
 /// ```
-pub fn xor_with_key(data: impl AsRef<[u8]>, key: impl AsRef<[u8]>) -> Result<Vec<u8>> {
+pub fn xor_with_key(data: impl AsRef<[u8]>, key: impl AsRef<[u8]>) -> Result<Vec<u8>, XorError> {
     let data = data.as_ref();
     let key = key.as_ref();
 
-    ensure!(!key.is_empty(), "XOR Key cannot be empty.");
+    if key.is_empty() {
+        return Err(XorError::EmptyKey);
+    }
 
     let xorred = data
         .iter()
@@ -113,12 +127,18 @@ pub fn xor_with_key_into(
     data: impl AsRef<[u8]>,
     key: impl AsRef<[u8]>,
     out: &mut [u8],
-) -> Result<()> {
+) -> Result<(), XorError> {
     let data = data.as_ref();
     let key = key.as_ref();
 
-    ensure!(!key.is_empty(), "XOR Key cannot be empty.");
-    ensure!(out.len() >= data.len(), "Insuffient space in output slice.");
+    if key.is_empty() {
+        return Err(XorError::EmptyKey);
+    }
+
+    // ensure the output has enough space
+    if data.len() > out.len() {
+        return Err(XorError::OutputTooSmall);
+    }
 
     let xorred = data.iter().zip(key.iter().cycle()).map(|(x, y)| x ^ y);
 
@@ -168,7 +188,7 @@ pub fn xor_block_simd_into(a: &[u8; 16], b: &mut [u8; 16]) {
 }
 
 /// Break a xor with a single byte key, returns the byte key
-pub fn break_single_xor(data: &[u8]) -> Result<u8> {
+pub fn break_single_xor(data: &[u8]) -> Result<u8, XorError> {
     let mut xorred = data.to_vec();
     let mut max_key = 0;
     let mut max_score = u64::MIN;
@@ -190,17 +210,17 @@ pub fn break_repeating_key_xor(
     data: impl AsRef<[u8]>,
     key_range: RangeInclusive<usize>,
     average_blocks: usize,
-) -> Result<Vec<u8>> {
+) -> Result<Vec<u8>, XorError> {
     let data = data.as_ref();
     let mut min_norm = f64::INFINITY;
     let mut best_key_size = 0;
     for key_size in key_range {
         let block1 = data
             .get(..key_size * average_blocks)
-            .ok_or_else(|| anyhow!("input data too small"))?;
+            .ok_or(XorError::InputTooSmall)?;
         let block2 = data
             .get(key_size * average_blocks..key_size * average_blocks * 2)
-            .ok_or_else(|| anyhow!("input data too small"))?;
+            .ok_or(XorError::InputTooSmall)?;
         let norm = edit_distance(block1, block2) as f64 / key_size as f64;
         if norm < min_norm {
             min_norm = norm;

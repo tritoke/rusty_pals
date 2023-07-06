@@ -1,6 +1,7 @@
 #![allow(clippy::erasing_op)]
+
+use crate::encoding::DecodingError;
 use crate::util::try_cast_as_arrays;
-use anyhow::{anyhow, Result};
 
 /// Base64 Alphabet from RFC4648
 const TABLE: [u8; 64] = *b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -49,7 +50,7 @@ pub fn b64encode(input: impl AsRef<[u8]>) -> String {
 /// assert_eq!(b64decode("Zm9vYmFy").unwrap(), b"foobar");
 /// assert_eq!("Zm9vYmFy".decode_b64().unwrap(), b"foobar");
 /// ```
-pub fn b64decode(input: impl AsRef<[u8]>) -> Result<Vec<u8>> {
+pub fn b64decode(input: impl AsRef<[u8]>) -> Result<Vec<u8>, DecodingError> {
     let data = input.as_ref();
     let pad = data.ends_with(b"==") as usize + data.ends_with(b"=") as usize;
 
@@ -91,7 +92,7 @@ pub fn b64decode(input: impl AsRef<[u8]>) -> Result<Vec<u8>> {
 }
 
 /// Translate a base64 character to a sextet
-fn to_sextet(c: u8) -> Result<u8> {
+fn to_sextet(c: u8) -> Result<u8, DecodingError> {
     match c {
         b'A'..=b'Z' => Ok(c - b'A'),
         b'a'..=b'z' => Ok(c - b'a' + 26),
@@ -100,7 +101,7 @@ fn to_sextet(c: u8) -> Result<u8> {
         b'/' => Ok(63),
         // treat pad character as zero
         b'=' => Ok(0),
-        x => Err(anyhow!("Invalid base64 character '{}' - {x}.", x as char)),
+        _ => Err(DecodingError::InvalidCharacter(c)),
     }
 }
 

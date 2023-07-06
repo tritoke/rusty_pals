@@ -1,4 +1,5 @@
 use crate::crypto::Hasher;
+#[cfg(target_feature = "sha")]
 use std::arch::x86_64::*;
 use std::mem;
 

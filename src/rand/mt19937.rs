@@ -1,7 +1,6 @@
 #![allow(non_upper_case_globals)]
 
 use crate::rand::Rng32;
-use anyhow::Result;
 use std::mem;
 
 pub mod constants {
@@ -44,11 +43,11 @@ impl Default for Mt19937 {
 }
 
 impl Mt19937 {
-    pub fn from_state(state: &[u32; N as usize]) -> Result<Mt19937> {
-        Ok(Self {
+    pub fn from_state(state: &[u32; N as usize]) -> Mt19937 {
+        Self {
             mt: *state,
             index: N,
-        })
+        }
     }
 
     pub fn seed(&mut self, seed: u32) {
