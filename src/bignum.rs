@@ -24,6 +24,12 @@ impl<const LIMBS: usize> Bignum<LIMBS> {
 
     const ZERO: Self = Self::MIN;
 
+    const ONE: Self = {
+        let mut limbs = [0u64; LIMBS];
+        limbs[0] = 1;
+        Bignum { limbs }
+    };
+
     pub fn is_zero(&self) -> bool {
         self.limbs.iter().all(|x| *x == 0)
     }
@@ -60,7 +66,7 @@ impl<const LIMBS: usize> Bignum<LIMBS> {
         let one_pos = self
             .limbs
             .iter()
-            .map(|limb| dbg!(dbg!(limb).trailing_zeros()))
+            .map(|limb| limb.trailing_zeros())
             .take_while(|zeros| *zeros == 64)
             .count();
         let final_limb_trailing_zeros = self
@@ -95,8 +101,12 @@ impl<const LIMBS: usize> Bignum<LIMBS> {
             .take_while(|ones| *ones == 64)
             .count();
         let final_limb_trailing_ones = self.limbs.get(zero_pos).unwrap_or(&0).trailing_ones();
-        dbg!(zero_pos, final_limb_trailing_ones);
         zero_pos as u32 * 64 + final_limb_trailing_ones
+    }
+
+    /// The number of bits required to represent this number
+    pub fn bit_length(&self) -> u32 {
+        64 * LIMBS as u32 - self.leading_zeros()
     }
 }
 
@@ -117,7 +127,33 @@ impl<const LIMBS: usize> Bignum<LIMBS> {
             return (Bignum::ZERO, *self);
         }
 
-        todo!()
+        let mut dividend = *self;
+        let mut divisor = rhs;
+
+        // normalise divisor
+        let normalising_shift = divisor.leading_zeros() - dividend.leading_zeros();
+        divisor <<= normalising_shift;
+        eprintln!("normalising_shift={normalising_shift}");
+        debug_assert_eq!(dividend.leading_zeros(), divisor.leading_zeros());
+
+        // initialize quotient and remainder
+        let mut quotient = Bignum::ZERO;
+
+        // perform the division
+        while dividend >= rhs {
+            eprintln!("dividend={dividend}\tdivisor={divisor}\tquotient={quotient}");
+            quotient <<= 1;
+            if dividend >= divisor {
+                dividend -= divisor;
+                quotient |= Bignum::ONE;
+            }
+            divisor >>= 1;
+        }
+        eprintln!("dividend={dividend}\tdivisor={divisor}\tquotient={quotient}");
+        let remainder = dividend;
+        quotient <<= 1 + divisor.bit_length() - rhs.bit_length();
+
+        (quotient, remainder)
     }
 }
 
@@ -129,6 +165,10 @@ impl<const LIMBS: usize> Default for Bignum<LIMBS> {
 
 impl<const LIMBS: usize> fmt::Display for Bignum<LIMBS> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        if self.is_zero() {
+            return write!(f, "0x0");
+        }
+
         let mut first = true;
         for limb in self.limbs.iter().rev() {
             if first && *limb != 0 {
@@ -448,7 +488,8 @@ mod tests {
 
     #[test]
     fn test_display_bignums() {
-        let nums: [Bignum<10>; 4] = [
+        let nums: [Bignum<10>; 5] = [
+            Bignum::ZERO,
             5u8.into(),
             u64::MAX.into(),
             Bignum {
@@ -458,7 +499,7 @@ mod tests {
                 limbs: [u64::MAX; 10],
             },
         ];
-        let strings = ["0x5", "0xffffffffffffffff", "0x10000000000000000", "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"];
+        let strings = ["0x0", "0x5", "0xffffffffffffffff", "0x10000000000000000", "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"];
 
         for (n, s) in nums.iter().zip(strings.iter()) {
             assert_eq!(format!("{n}"), *s);
@@ -644,6 +685,7 @@ mod tests {
         let b: Bignum<10> = 56u8.into();
         assert_eq!(a.divmod(b), (22u8.into(), 2u8.into()));
 
+        eprintln!("=====");
         let a: Bignum<10> = 12345_u32.into();
         let b: Bignum<10> = 10u8.into();
         assert_eq!(a.divmod(b), (1234u16.into(), 5u8.into()));
@@ -669,6 +711,260 @@ mod tests {
         let a: Bignum<10> = Bignum::MAX;
         let b: Bignum<10> = u64::MAX.into();
         assert_eq!(a.divmod(b), (Bignum { limbs: [1; 10] }, Bignum::ZERO));
+    }
+
+    #[test]
+    fn test_div_bignums() {
+        let a: Bignum<10> = 5u8.into();
+        let b: Bignum<10> = 6u8.into();
+        assert!((b / a).is_one());
+        assert!((a / b).is_zero());
+
+        let a: Bignum<10> = Bignum {
+            limbs: [0, 1, 0, 0, 0, 0, 0, 0, 0, 0],
+        };
+        let b: Bignum<10> = 10u8.into();
+        assert_eq!(a / b, 0x1999999999999999_u64.into());
+
+        let a: Bignum<10> = u64::MAX.into();
+        let b: Bignum<10> = u64::MAX.into();
+        assert!((a / b).is_one());
+
+        let a = Bignum {
+            limbs: [
+                0x6bfd532eb947c673,
+                0x8e98c292493d61d7,
+                0xd60f263b7c6df781,
+                0xfb386a2a8e81667d,
+                0xa06b2d52d4912959,
+                0xf0e1e5d6919e7cc7,
+                0xcdacea38cfbab56f,
+                0x7e738acc18d8deb5,
+                0x286b1e683604e595,
+                0xabf022ad49921511,
+            ],
+        };
+        let b = Bignum {
+            limbs: [
+                0x19fd8394b7d3132a,
+                0x422fadeab46ddcb0,
+                0x30d1cb341a4ac45f,
+                0xeec004de9a047a3b,
+                0x176c473a8fd,
+                0,
+                0,
+                0,
+                0,
+                0,
+            ],
+        };
+        let c = Bignum {
+            limbs: [
+                0x989bf5494e86059f,
+                0x289535aece53ee9f,
+                0xeb9422228969c825,
+                0xc84a3ea7ed6cf346,
+                0xb43e1bc51198548a,
+                0x7572ff,
+                0,
+                0,
+                0,
+                0,
+            ],
+        };
+        assert_eq!(a / b, c);
+    }
+
+    #[test]
+    fn test_div_assign_bignums() {
+        let mut a: Bignum<10> = 5u8.into();
+        let b: Bignum<10> = 6u8.into();
+        a /= b;
+        assert!((a / b).is_zero());
+
+        let mut a: Bignum<10> = Bignum {
+            limbs: [0, 1, 0, 0, 0, 0, 0, 0, 0, 0],
+        };
+        let b: Bignum<10> = 10u8.into();
+        a /= b;
+        assert_eq!(a, 0x1999999999999999_u64.into());
+
+        let mut a: Bignum<10> = u64::MAX.into();
+        let b: Bignum<10> = u64::MAX.into();
+        a /= b;
+        assert!(a.is_one());
+
+        let mut a = Bignum {
+            limbs: [
+                0x6bfd532eb947c673,
+                0x8e98c292493d61d7,
+                0xd60f263b7c6df781,
+                0xfb386a2a8e81667d,
+                0xa06b2d52d4912959,
+                0xf0e1e5d6919e7cc7,
+                0xcdacea38cfbab56f,
+                0x7e738acc18d8deb5,
+                0x286b1e683604e595,
+                0xabf022ad49921511,
+            ],
+        };
+        let b = Bignum {
+            limbs: [
+                0x19fd8394b7d3132a,
+                0x422fadeab46ddcb0,
+                0x30d1cb341a4ac45f,
+                0xeec004de9a047a3b,
+                0x176c473a8fd,
+                0,
+                0,
+                0,
+                0,
+                0,
+            ],
+        };
+        let c = Bignum {
+            limbs: [
+                0x989bf5494e86059f,
+                0x289535aece53ee9f,
+                0xeb9422228969c825,
+                0xc84a3ea7ed6cf346,
+                0xb43e1bc51198548a,
+                0x7572ff,
+                0,
+                0,
+                0,
+                0,
+            ],
+        };
+        a /= b;
+        assert_eq!(a, c);
+    }
+
+    #[test]
+    fn test_rem_bignums() {
+        let a: Bignum<10> = 5u8.into();
+        let b: Bignum<10> = 6u8.into();
+        assert_eq!(a % b, a);
+        assert!((b % a).is_one());
+
+        let a: Bignum<10> = Bignum {
+            limbs: [0, 1, 0, 0, 0, 0, 0, 0, 0, 0],
+        };
+        let b: Bignum<10> = 10u8.into();
+        assert_eq!(a % b, 6_u8.into());
+
+        let a: Bignum<10> = u64::MAX.into();
+        let b: Bignum<10> = u64::MAX.into();
+        assert!((a % b).is_zero());
+
+        let a = Bignum {
+            limbs: [
+                0x6bfd532eb947c673,
+                0x8e98c292493d61d7,
+                0xd60f263b7c6df781,
+                0xfb386a2a8e81667d,
+                0xa06b2d52d4912959,
+                0xf0e1e5d6919e7cc7,
+                0xcdacea38cfbab56f,
+                0x7e738acc18d8deb5,
+                0x286b1e683604e595,
+                0xabf022ad49921511,
+            ],
+        };
+        let b = Bignum {
+            limbs: [
+                0x19fd8394b7d3132a,
+                0x422fadeab46ddcb0,
+                0x30d1cb341a4ac45f,
+                0xeec004de9a047a3b,
+                0x176c473a8fd,
+                0,
+                0,
+                0,
+                0,
+                0,
+            ],
+        };
+        let c = Bignum {
+            limbs: [
+                0x2d2680ec99d30d5d,
+                0xad5e5c257ca89a92,
+                0x3019d5547be64a46,
+                0xa40a6a063ebf3954,
+                0xf1f3f1e1fc,
+                0,
+                0,
+                0,
+                0,
+                0,
+            ],
+        };
+        assert_eq!(a % b, c);
+    }
+
+    #[test]
+    fn test_rem_assign_bignums() {
+        let a: Bignum<10> = 5u8.into();
+        let mut b: Bignum<10> = 6u8.into();
+        b %= a;
+        assert!(b.is_one());
+
+        let mut a: Bignum<10> = Bignum {
+            limbs: [0, 1, 0, 0, 0, 0, 0, 0, 0, 0],
+        };
+        let b: Bignum<10> = 10u8.into();
+        a %= b;
+        assert_eq!(a, 6_u8.into());
+
+        let mut a: Bignum<10> = u64::MAX.into();
+        let b: Bignum<10> = u64::MAX.into();
+        a %= b;
+        assert!(a.is_zero());
+
+        let mut a = Bignum {
+            limbs: [
+                0x6bfd532eb947c673,
+                0x8e98c292493d61d7,
+                0xd60f263b7c6df781,
+                0xfb386a2a8e81667d,
+                0xa06b2d52d4912959,
+                0xf0e1e5d6919e7cc7,
+                0xcdacea38cfbab56f,
+                0x7e738acc18d8deb5,
+                0x286b1e683604e595,
+                0xabf022ad49921511,
+            ],
+        };
+        let b = Bignum {
+            limbs: [
+                0x19fd8394b7d3132a,
+                0x422fadeab46ddcb0,
+                0x30d1cb341a4ac45f,
+                0xeec004de9a047a3b,
+                0x176c473a8fd,
+                0,
+                0,
+                0,
+                0,
+                0,
+            ],
+        };
+        let c = Bignum {
+            limbs: [
+                0x2d2680ec99d30d5d,
+                0xad5e5c257ca89a92,
+                0x3019d5547be64a46,
+                0xa40a6a063ebf3954,
+                0xf1f3f1e1fc,
+                0,
+                0,
+                0,
+                0,
+                0,
+            ],
+        };
+        a %= b;
+        assert_eq!(a, c);
     }
 
     #[test]
@@ -1287,7 +1583,6 @@ mod tests {
         let a: Bignum<10> = Bignum {
             limbs: [0, 0, 0, 0, 0, 0, 0, 0, 0, u64::MAX],
         };
-        dbg!(a);
         assert_eq!(a.leading_ones(), 64);
         assert_eq!(Bignum::<10>::MIN.leading_ones(), 0);
         assert_eq!(Bignum::<10>::MAX.leading_ones(), 64 * 10);
@@ -1298,11 +1593,22 @@ mod tests {
     #[test]
     fn test_trailing_ones_bignums() {
         let a: Bignum<10> = !Bignum {
-            limbs: [0, 0, 0, 0, 0, 0, 0, 0, u64::MAX, 0]
+            limbs: [0, 0, 0, 0, 0, 0, 0, 0, u64::MAX, 0],
         };
         assert_eq!(a.trailing_ones(), 64 * 8);
         assert_eq!(Bignum::<10>::MIN.trailing_ones(), 0);
         assert_eq!(Bignum::<10>::MAX.trailing_ones(), 64 * 10);
         assert_eq!((!(Bignum::<10>::MAX << 50)).trailing_ones(), 50);
+    }
+
+    #[test]
+    fn test_bit_length_bignums() {
+        // let a: Bignum<10> = Bignum {
+        //     limbs: [0, 0, 0, 0, 0, 0, 0, 0, u64::MAX, 0],
+        // };
+        // assert_eq!(a.bit_length(), 64 * 9);
+        assert_eq!(Bignum::<10>::MIN.bit_length(), 0);
+        assert_eq!(Bignum::<10>::MAX.bit_length(), 64 * 10);
+        assert_eq!((Bignum::<10>::MAX >> 50).bit_length(), 64 * 10 - 50);
     }
 }
