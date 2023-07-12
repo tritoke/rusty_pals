@@ -1,30 +1,95 @@
+use crate::rand::Rng32;
 use std::cmp::Ordering;
 use std::fmt;
-use std::fmt::Formatter;
+use std::num::ParseIntError;
 use std::ops::{
     Add, AddAssign, BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Div, DivAssign,
     Mul, MulAssign, Not, Rem, RemAssign, Shl, ShlAssign, Shr, ShrAssign, Sub, SubAssign,
 };
+use std::str::FromStr;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
-struct Bignum<const LIMBS: usize> {
+pub struct Bignum<const LIMBS: usize> {
     limbs: [u64; LIMBS],
+}
+
+pub mod nist_consts {
+    use super::Bignum;
+
+    pub const NIST_P: Bignum<48> = Bignum {
+        limbs: [
+            0xffffffffffffffff,
+            0xf1746c08ca237327,
+            0x670c354e4abc9804,
+            0x9ed529077096966d,
+            0x1c62f356208552bb,
+            0x83655d23dca3ad96,
+            0x69163fa8fd24cf5f,
+            0x98da48361c55d39a,
+            0xc2007cb8a163bf05,
+            0x49286651ece45b3d,
+            0xae9f24117c4b1fe6,
+            0xee386bfb5a899fa5,
+            0xbff5cb6f406b7ed,
+            0xf44c42e9a637ed6b,
+            0xe485b576625e7ec6,
+            0x4fe1356d6d51c245,
+            0x302b0a6df25f1437,
+            0xef9519b3cd3a431b,
+            0x514a08798e3404dd,
+            0x20bbea63b139b22,
+            0x29024e088a67cc74,
+            0xc4c6628b80dc1cd1,
+            0xc90fdaa22168c234,
+            0xffffffffffffffff,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+        ],
+    };
+
+    pub const NIST_G: Bignum<48> = {
+        let mut limbs = [0u64; 48];
+        limbs[0] = 2;
+        Bignum { limbs }
+    };
 }
 
 // utility functions
 #[allow(dead_code)]
 impl<const LIMBS: usize> Bignum<LIMBS> {
-    const MAX: Self = Self {
+    pub const MAX: Self = Self {
         limbs: [u64::MAX; LIMBS],
     };
 
-    const MIN: Self = Self {
+    pub const MIN: Self = Self {
         limbs: [u64::MIN; LIMBS],
     };
 
-    const ZERO: Self = Self::MIN;
+    pub const ZERO: Self = Self::MIN;
 
-    const ONE: Self = {
+    pub const ONE: Self = {
         let mut limbs = [0u64; LIMBS];
         limbs[0] = 1;
         Bignum { limbs }
@@ -108,6 +173,26 @@ impl<const LIMBS: usize> Bignum<LIMBS> {
     pub fn bit_length(&self) -> u32 {
         64 * LIMBS as u32 - self.leading_zeros()
     }
+
+    /// Test if bit N is set
+    pub fn test_bit(&self, bit: usize) -> bool {
+        if bit > 64 * LIMBS {
+            panic!("attempt to test bit with overflow");
+        }
+
+        let limb_idx = bit / 64;
+        let bit_idx = bit % 64;
+
+        (self.limbs[limb_idx] >> bit_idx) & 1 == 1
+    }
+
+    pub fn random(rng: &mut impl Rng32) -> Self {
+        let mut out = Self::default();
+        for limb in out.limbs.iter_mut() {
+            *limb = u64::from_be_bytes(rng.gen_array());
+        }
+        out
+    }
 }
 
 #[allow(dead_code)]
@@ -133,7 +218,6 @@ impl<const LIMBS: usize> Bignum<LIMBS> {
         // normalise divisor
         let normalising_shift = divisor.leading_zeros() - dividend.leading_zeros();
         divisor <<= normalising_shift;
-        eprintln!("normalising_shift={normalising_shift}");
         debug_assert_eq!(dividend.leading_zeros(), divisor.leading_zeros());
 
         // initialize quotient and remainder
@@ -141,7 +225,6 @@ impl<const LIMBS: usize> Bignum<LIMBS> {
 
         // perform the division
         while dividend >= rhs {
-            eprintln!("dividend={dividend}\tdivisor={divisor}\tquotient={quotient}");
             quotient <<= 1;
             if dividend >= divisor {
                 dividend -= divisor;
@@ -149,11 +232,30 @@ impl<const LIMBS: usize> Bignum<LIMBS> {
             }
             divisor >>= 1;
         }
-        eprintln!("dividend={dividend}\tdivisor={divisor}\tquotient={quotient}");
         let remainder = dividend;
         quotient <<= 1 + divisor.bit_length() - rhs.bit_length();
 
         (quotient, remainder)
+    }
+
+    pub fn modexp(self, exponent: Self, prime: Self) -> Self {
+        assert!(self.bit_length() <= LIMBS as u32 * 32);
+        assert!(prime.bit_length() <= LIMBS as u32 * 32);
+
+        if exponent.is_zero() {
+            return Bignum::ONE;
+        }
+
+        let mut x = self;
+        let mut y = Bignum::ONE;
+        for i in 0..(exponent.bit_length() as usize - 1) {
+            if exponent.test_bit(i) {
+                y = (y * x) % prime;
+            }
+            x = (x * x) % prime;
+        }
+
+        (x * y) % prime
     }
 }
 
@@ -164,7 +266,7 @@ impl<const LIMBS: usize> Default for Bignum<LIMBS> {
 }
 
 impl<const LIMBS: usize> fmt::Display for Bignum<LIMBS> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if self.is_zero() {
             return write!(f, "0x0");
         }
@@ -179,6 +281,28 @@ impl<const LIMBS: usize> fmt::Display for Bignum<LIMBS> {
             }
         }
         Ok(())
+    }
+}
+
+impl<const LIMBS: usize> FromStr for Bignum<LIMBS> {
+    type Err = ParseIntError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let offset = if s.starts_with("0x") { 2 } else { 0 };
+        let bytes = &s.as_bytes()[offset..];
+        if bytes.len() > LIMBS * 16 {
+            return Err(u8::from_str_radix("1000", 10).unwrap_err());
+        }
+
+        let mut out = Self::default();
+        for (limb, chunk) in out.limbs.iter_mut().zip(bytes.chunks(16).rev()) {
+            *limb = u64::from_str_radix(
+                std::str::from_utf8(chunk).expect("MMH WHY IS THERE UNICODE IN YOUR NUMBER BOI"),
+                16,
+            )?;
+        }
+
+        Ok(out)
     }
 }
 
@@ -297,9 +421,9 @@ impl<const LIMBS: usize> Mul for Bignum<LIMBS> {
     fn mul(self, rhs: Self) -> Self::Output {
         let mut out = Self::default();
 
-        for r in rhs.limbs.iter() {
+        for (i, r) in rhs.limbs.iter().enumerate() {
             let mut carry = 0;
-            for (l, o) in self.limbs.iter().zip(out.limbs.iter_mut()) {
+            for (l, o) in self.limbs.iter().zip(out.limbs.iter_mut().skip(i)) {
                 let (prod, next_carry) = carrying_mul(*r, *l, carry);
                 let (new_limb, add_carry) = o.overflowing_add(prod);
                 carry = next_carry + u64::from(add_carry);
@@ -507,6 +631,14 @@ mod tests {
     }
 
     #[test]
+    fn test_from_str_bignums() {
+        let p1: Bignum<48> = "0xffffffffffffffffc90fdaa22168c234c4c6628b80dc1cd129024e088a67cc74020bbea63b139b22514a08798e3404ddef9519b3cd3a431b302b0a6df25f14374fe1356d6d51c245e485b576625e7ec6f44c42e9a637ed6b0bff5cb6f406b7edee386bfb5a899fa5ae9f24117c4b1fe649286651ece45b3dc2007cb8a163bf0598da48361c55d39a69163fa8fd24cf5f83655d23dca3ad961c62f356208552bb9ed529077096966d670c354e4abc9804f1746c08ca237327ffffffffffffffff".parse().unwrap();
+        let p2: Bignum<48> = "ffffffffffffffffc90fdaa22168c234c4c6628b80dc1cd129024e088a67cc74020bbea63b139b22514a08798e3404ddef9519b3cd3a431b302b0a6df25f14374fe1356d6d51c245e485b576625e7ec6f44c42e9a637ed6b0bff5cb6f406b7edee386bfb5a899fa5ae9f24117c4b1fe649286651ece45b3dc2007cb8a163bf0598da48361c55d39a69163fa8fd24cf5f83655d23dca3ad961c62f356208552bb9ed529077096966d670c354e4abc9804f1746c08ca237327ffffffffffffffff".parse().unwrap();
+        assert_eq!(p1, super::nist_consts::NIST_P);
+        assert_eq!(p2, super::nist_consts::NIST_P);
+    }
+
+    #[test]
     fn test_cmp_bignums() {
         let a: Bignum<10> = 0xFFFF_u16.into();
         assert!(a > Bignum::MIN && a < Bignum::MAX);
@@ -623,6 +755,7 @@ mod tests {
         let a: Bignum<10> = 5u8.into();
         let b: Bignum<10> = 6u8.into();
         assert_eq!(b * a, 30u8.into());
+        // assert!(a.limbs[0] == 123);
 
         let a: Bignum<10> = Bignum {
             limbs: [0, 1, 0, 0, 0, 0, 0, 0, 0, 0],
@@ -641,6 +774,38 @@ mod tests {
             a * b,
             Bignum {
                 limbs: [1, u64::MAX - 1, 0, 0, 0, 0, 0, 0, 0, 0],
+            }
+        );
+
+        let a = Bignum {
+            limbs: [
+                0xb4830d2b3cc4b4bb,
+                0x4d847515b57d26be,
+                0xf140fe29591db8b1,
+                0xbfc2c416d5e95510,
+                0xc1c04b03907d23ff,
+                0x0,
+                0x0,
+                0x0,
+                0x0,
+                0x0,
+            ],
+        };
+        assert_eq!(
+            a * a,
+            Bignum {
+                limbs: [
+                    0x623e80aee5ef8099,
+                    0xfe31042acea40485,
+                    0xa735be994a362d0d,
+                    0x592dc17e83bc9097,
+                    0x88fcd2b34c5b6749,
+                    0xa546f4d2292c911a,
+                    0xf623a0ab548f8545,
+                    0xe6b64acd44e6d989,
+                    0xa65707d712ccf8de,
+                    0x92a3818bfb3082b3
+                ]
             }
         );
     }
@@ -673,6 +838,39 @@ mod tests {
                 limbs: [1, u64::MAX - 1, 0, 0, 0, 0, 0, 0, 0, 0],
             }
         );
+
+        let mut a = Bignum {
+            limbs: [
+                0xb4830d2b3cc4b4bb,
+                0x4d847515b57d26be,
+                0xf140fe29591db8b1,
+                0xbfc2c416d5e95510,
+                0xc1c04b03907d23ff,
+                0x0,
+                0x0,
+                0x0,
+                0x0,
+                0x0,
+            ],
+        };
+        a *= a;
+        assert_eq!(
+            a,
+            Bignum {
+                limbs: [
+                    0x623e80aee5ef8099,
+                    0xfe31042acea40485,
+                    0xa735be994a362d0d,
+                    0x592dc17e83bc9097,
+                    0x88fcd2b34c5b6749,
+                    0xa546f4d2292c911a,
+                    0xf623a0ab548f8545,
+                    0xe6b64acd44e6d989,
+                    0xa65707d712ccf8de,
+                    0x92a3818bfb3082b3
+                ]
+            }
+        );
     }
 
     #[test]
@@ -685,7 +883,6 @@ mod tests {
         let b: Bignum<10> = 56u8.into();
         assert_eq!(a.divmod(b), (22u8.into(), 2u8.into()));
 
-        eprintln!("=====");
         let a: Bignum<10> = 12345_u32.into();
         let b: Bignum<10> = 10u8.into();
         assert_eq!(a.divmod(b), (1234u16.into(), 5u8.into()));
@@ -965,6 +1162,81 @@ mod tests {
         };
         a %= b;
         assert_eq!(a, c);
+    }
+
+    #[test]
+    fn test_modexp_bignums() {
+        let a: Bignum<10> = 5u8.into();
+        let b: Bignum<10> = 6u8.into();
+        let p = 7u8.into();
+        assert_eq!(a.modexp(b, p), 1u8.into());
+
+        let a: Bignum<10> = 1234u16.into();
+        let b: Bignum<10> = 56u8.into();
+        let p = 63097u16.into();
+        assert_eq!(a.modexp(b, p), 19484u16.into());
+
+        let a = Bignum {
+            limbs: [
+                0xb4830d2b3cc4b4bb,
+                0x4d847515b57d26be,
+                0xf140fe29591db8b1,
+                0xbfc2c416d5e95510,
+                0xc1c04b03907d23ff,
+                0x0,
+                0x0,
+                0x0,
+                0x0,
+                0x0,
+            ],
+        };
+        let b = Bignum {
+            limbs: [
+                0xe8772512ce1f7b9f,
+                0x451aa7d52bf5c78d,
+                0x642d57d46c59d77f,
+                0x2837cdd88dda035,
+                0x14051e1547177b5c,
+                0x0,
+                0x0,
+                0x0,
+                0x0,
+                0x0,
+            ],
+        };
+        let p = Bignum {
+            limbs: [
+                0x603cefe390418a2b,
+                0xed8ee51b4a3b8ee2,
+                0x2ec9a9dc5c9d8cfc,
+                0x216145bd7def3632,
+                0xfd26188815dbff75,
+                0x0,
+                0x0,
+                0x0,
+                0x0,
+                0x0,
+            ],
+        };
+
+        assert_eq!(a.modexp(Bignum::ZERO, p), Bignum::ONE);
+        assert_eq!(
+            a.modexp(b, p),
+            Bignum {
+                limbs: [
+                    0x9b8e80cf15097ec8,
+                    0xb65ab0282cdd9221,
+                    0x2336422285e470fd,
+                    0xc23f88da48ef28c5,
+                    0x924f5dadc7c825ac,
+                    0x0,
+                    0x0,
+                    0x0,
+                    0x0,
+                    0x0,
+                ],
+            }
+        );
     }
 
     #[test]
@@ -1586,7 +1858,6 @@ mod tests {
         assert_eq!(a.leading_ones(), 64);
         assert_eq!(Bignum::<10>::MIN.leading_ones(), 0);
         assert_eq!(Bignum::<10>::MAX.leading_ones(), 64 * 10);
-        eprintln!("{}", !(Bignum::<10>::MAX >> 50));
         assert_eq!((!(Bignum::<10>::MAX >> 50)).leading_ones(), 50);
     }
 
@@ -1603,12 +1874,28 @@ mod tests {
 
     #[test]
     fn test_bit_length_bignums() {
-        // let a: Bignum<10> = Bignum {
-        //     limbs: [0, 0, 0, 0, 0, 0, 0, 0, u64::MAX, 0],
-        // };
-        // assert_eq!(a.bit_length(), 64 * 9);
+        let a: Bignum<10> = Bignum {
+            limbs: [0, 0, 0, 0, 0, 0, 0, 0, u64::MAX, 0],
+        };
+        assert_eq!(a.bit_length(), 64 * 9);
         assert_eq!(Bignum::<10>::MIN.bit_length(), 0);
         assert_eq!(Bignum::<10>::MAX.bit_length(), 64 * 10);
         assert_eq!((Bignum::<10>::MAX >> 50).bit_length(), 64 * 10 - 50);
+    }
+
+    #[test]
+    fn test_test_bit_bignums() {
+        let a: Bignum<10> = Bignum {
+            limbs: [0, 0, 0, 0, 0, 0, 0, 0, u64::MAX, 0],
+        };
+        for i in 0..640 {
+            assert!(Bignum::<10>::MAX.test_bit(i));
+            assert!(!Bignum::<10>::MIN.test_bit(i));
+            if (8 * 64..9 * 64).contains(&i) {
+                assert!(a.test_bit(i));
+            } else {
+                assert!(!a.test_bit(i));
+            }
+        }
     }
 }
