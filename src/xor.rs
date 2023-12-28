@@ -194,7 +194,7 @@ pub fn break_single_xor(data: &[u8]) -> Result<u8, XorError> {
     let mut max_score = u64::MIN;
 
     for key in 0..=u8::MAX {
-        xor_with_key_into(&data, [key], &mut xorred)?;
+        xor_with_key_into(data, [key], &mut xorred)?;
         let score = score_text(&xorred);
         if score > max_score {
             max_score = score;

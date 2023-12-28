@@ -26,6 +26,8 @@ pub mod constants {
 }
 use constants::*;
 
+use super::gen_random_seed;
+
 const LOWER_MASK: u32 = (1 << R) - 1;
 const UPPER_MASK: u32 = !LOWER_MASK;
 
@@ -37,29 +39,24 @@ pub struct Mt19937 {
 
 impl Default for Mt19937 {
     fn default() -> Self {
-        // Original implementation used this if a seed wasn't supplied
-        Self::from_seed(5489)
+        let mut r = Self::new();
+        r.seed(5489);
+        r
     }
 }
 
 impl Mt19937 {
+    pub fn new() -> Self {
+        let mut rng: Mt19937 = unsafe { mem::zeroed() };
+        rng.seed(gen_random_seed());
+        rng
+    }
+
     pub fn from_state(state: &[u32; N as usize]) -> Mt19937 {
         Self {
             mt: *state,
             index: N,
         }
-    }
-
-    pub fn seed(&mut self, seed: u32) {
-        self.mt[0] = seed;
-
-        for i in 1..N as usize {
-            self.mt[i] = F
-                .wrapping_mul(self.mt[i - 1] ^ (self.mt[i - 1] >> (W - 2)))
-                .wrapping_add(i as u32);
-        }
-
-        self.index = N;
     }
 
     pub fn temper(mut n: u32) -> u32 {
@@ -81,16 +78,16 @@ impl Mt19937 {
 }
 
 impl Rng32 for Mt19937 {
-    fn new() -> Self {
-        Self::from_seed(crate::rand::gen_random_seed())
-    }
+    fn seed(&mut self, seed: u32) {
+        self.mt[0] = seed;
 
-    fn from_seed(seed: u32) -> Self {
-        // SAFETY: all members of this struct are integers of the same size
-        // therefore it is safe to initialize them as zero
-        let mut rng: Mt19937 = unsafe { mem::zeroed() };
-        rng.seed(seed);
-        rng
+        for i in 1..N as usize {
+            self.mt[i] = F
+                .wrapping_mul(self.mt[i - 1] ^ (self.mt[i - 1] >> (W - 2)))
+                .wrapping_add(i as u32);
+        }
+
+        self.index = N;
     }
 
     fn gen(&mut self) -> u32 {
@@ -257,7 +254,8 @@ mod tests {
 
     #[test]
     fn test_correct_gen() {
-        let mut rng = Mt19937::from_seed(5489);
+        let mut rng = Mt19937::new();
+        rng.seed(5489);
         let out: Vec<_> = iter::from_fn(|| Some(rng.gen())).take(1000).collect();
         assert_eq!(out, MT_FIRST_1000);
     }

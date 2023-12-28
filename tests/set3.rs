@@ -72,26 +72,26 @@ mod chal17 {
             pad::pkcs7_into(&mut data, Aes128::BLOCK_SIZE as u8);
             let iv = self.rng.gen_array();
             let mut out = iv.to_vec();
-            out.extend_from_slice(&encrypt(&data, &self.key, iv, Mode::CBC));
+            out.extend_from_slice(&encrypt(&data, self.key, iv, Mode::CBC));
             out
         }
 
         fn is_padding_valid(&self, ct: &[u8]) -> bool {
             let (iv, ct) = ct.split_at(Aes128::BLOCK_SIZE);
-            let mut dec = decrypt(ct, &self.key, *cast_as_array(iv), Mode::CBC);
+            let mut dec = decrypt(ct, self.key, *cast_as_array(iv), Mode::CBC);
             pad::pkcs7_unpad_owned(&mut dec).is_ok()
         }
     }
 
     #[test]
     fn challenge17() {
-        let mut rng = XorShift32::from_seed(1234);
+        let mut rng = XorShift32::new();
 
         let mut chall = Challenge::new(&mut rng);
         let (ct, pt) = attack(&mut chall);
 
         let (iv, ct) = ct.split_at(Aes128::BLOCK_SIZE);
-        let mut pt_correct = decrypt(ct, &chall.key, *cast_as_array(iv), Mode::CBC);
+        let mut pt_correct = decrypt(ct, chall.key, *cast_as_array(iv), Mode::CBC);
         pad::pkcs7_unpad_owned(&mut pt_correct).unwrap();
         assert_eq!(pt, pt_correct);
     }
@@ -163,7 +163,7 @@ mod chal17 {
 
         let mut pt = vec![];
         for blocks in 2..=ct.len() / Aes128::BLOCK_SIZE {
-            let plain = break_final_block(&chall, &ct[..blocks * Aes128::BLOCK_SIZE]);
+            let plain = break_final_block(chall, &ct[..blocks * Aes128::BLOCK_SIZE]);
             pt.extend_from_slice(&plain);
         }
 
@@ -180,7 +180,7 @@ fn challenge18() -> ChallengeResult<()> {
         "L77na/nrFsKvynd6HzOoG7GHTLXsTVu9qvY/2syLXzhPweyyMTJULu/6/kXX0KSvoOLSFQ==".decode_b64()?;
 
     let key = Aes128::new(b"YELLOW SUBMARINE");
-    let dec = decrypt(&enc, &key, 0, Mode::CTR);
+    let dec = decrypt(&enc, key, 0, Mode::CTR);
 
     assert_eq!(dec.len(), enc.len());
     assert_eq!(dec, b"Yo, VIP Let's kick it Ice, Ice, baby Ice, Ice, baby ");
@@ -199,7 +199,7 @@ mod chall19 {
     // I don't like this challenge, it makes me sad
     // #[test]
     fn challenge19() -> ChallengeResult<()> {
-        let key = Aes128::new(&XorShift32::from_seed(42).gen_array());
+        let key = Aes128::new(&XorShift32::new().gen_array());
 
         let true_pts: Vec<Vec<u8>> = include_str!("files/19.txt")
             .lines()
@@ -209,7 +209,7 @@ mod chall19 {
         // generate the ciphertexts
         let cts: Vec<Vec<u8>> = true_pts
             .iter()
-            .map(|pt| Ok(encrypt(pt, &key, Iv::Nonce(0), Mode::CTR)))
+            .map(|pt| Ok(encrypt(pt, key, Iv::Nonce(0), Mode::CTR)))
             .collect::<ChallengeResult<_>>()?;
 
         let ct_refs: Vec<&[u8]> = cts.iter().map(AsRef::as_ref).collect();
@@ -226,7 +226,7 @@ mod chall19 {
             let xorred = xor_blocks(&ct1[..cl], &ct2[..cl])?;
             dbg!(xorred.encode_hex());
         }
-        todo!()
+        todo!("fuck this")
     }
 }
 
@@ -239,7 +239,7 @@ mod chall20 {
 
     #[test]
     fn challenge20() -> ChallengeResult<()> {
-        let key = Aes128::new(&XorShift32::from_seed(42).gen_array());
+        let key = Aes128::new(&XorShift32::new().gen_array());
 
         let true_pts: Vec<Vec<u8>> = include_str!("files/19.txt")
             .lines()
@@ -249,7 +249,7 @@ mod chall20 {
         // generate the ciphertexts
         let cts: Vec<Vec<u8>> = true_pts
             .iter()
-            .map(|pt| Ok(encrypt(pt, &key, Iv::Nonce(0), Mode::CTR)))
+            .map(|pt| Ok(encrypt(pt, key, Iv::Nonce(0), Mode::CTR)))
             .collect::<ChallengeResult<_>>()?;
 
         let ct_refs: Vec<&[u8]> = cts.iter().map(AsRef::as_ref).collect();
@@ -260,7 +260,7 @@ mod chall20 {
             true_pt.truncate(pt.len());
             let pt = std::str::from_utf8(&pt)?;
             let true_pt = std::str::from_utf8(&true_pt)?;
-            assert!(pt.eq_ignore_ascii_case(&true_pt));
+            assert!(pt.eq_ignore_ascii_case(true_pt));
         }
 
         Ok(())
@@ -320,8 +320,9 @@ mod chall22 {
 
     fn crack(n: u32, curr_unix_ts: u32) -> u32 {
         let mut ts = curr_unix_ts;
+        let mut rng = Mt19937::new();
         loop {
-            let mut rng = Mt19937::from_seed(ts);
+            rng.seed(ts);
             if rng.gen() == n {
                 break ts;
             }
@@ -330,7 +331,6 @@ mod chall22 {
     }
 }
 
-#[cfg(test)]
 mod chall23 {
     use anyhow::Result;
     use rusty_pals::rand::{Mt19937, Rng32};
@@ -419,7 +419,8 @@ mod chall24 {
 
     fn encrypt(data: impl AsRef<[u8]>, seed: u16) -> Vec<u8> {
         let mut data = data.as_ref().to_vec();
-        let mut rng = Mt19937::from_seed(seed as u32);
+        let mut rng = Mt19937::new();
+        rng.seed(seed as u32);
         let keystream = rng.gen_bytes(data.len());
 
         let (data_chunks, data_rmdr) = as_chunks_mut(&mut data);
@@ -485,7 +486,8 @@ mod chall24 {
     }
 
     fn create_recovery_token(time: u32) -> String {
-        let mut rng = Mt19937::from_seed(time);
+        let mut rng = Mt19937::new();
+        rng.seed(time);
         rng.gen_bytes(20).encode_b64()
     }
 

@@ -99,7 +99,7 @@ mod tests {
     #[test]
     fn test_to_hex() {
         assert_eq!(
-            to_hex(&[0x62, 0x65, 0x61, 0x6e, 0x73]),
+            to_hex([0x62, 0x65, 0x61, 0x6e, 0x73]),
             "6265616e73".to_owned()
         );
     }

@@ -12,6 +12,7 @@ const TABLE: [u8; 64] = *b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0
 /// assert_eq!(b64encode("foobar"), "Zm9vYmFy");
 /// assert_eq!(b"foobar".encode_b64() , "Zm9vYmFy");
 /// ```
+#[allow(clippy::identity_op)]
 pub fn b64encode(input: impl AsRef<[u8]>) -> String {
     let data = input.as_ref();
     let encoded_len = (((data.len()) + 2) / 3) * 4;
@@ -20,7 +21,7 @@ pub fn b64encode(input: impl AsRef<[u8]>) -> String {
     for block in data.chunks(3) {
         // pack bytes into u32
         let a = *block
-            .get(0)
+            .first()
             .expect("Chunks iterator will never yield an empty slice.");
         let b = *block.get(1).unwrap_or(&0);
         let c = *block.get(2).unwrap_or(&0);
@@ -50,6 +51,7 @@ pub fn b64encode(input: impl AsRef<[u8]>) -> String {
 /// assert_eq!(b64decode("Zm9vYmFy").unwrap(), b"foobar");
 /// assert_eq!("Zm9vYmFy".decode_b64().unwrap(), b"foobar");
 /// ```
+#[allow(clippy::identity_op)]
 pub fn b64decode(input: impl AsRef<[u8]>) -> Result<Vec<u8>, DecodingError> {
     let data = input.as_ref();
     let pad = data.ends_with(b"==") as usize + data.ends_with(b"=") as usize;

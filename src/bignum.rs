@@ -186,7 +186,7 @@ impl<const LIMBS: usize> Bignum<LIMBS> {
         (self.limbs[limb_idx] >> bit_idx) & 1 == 1
     }
 
-    pub fn random(rng: &mut impl Rng32) -> Self {
+    pub fn random(mut rng: impl Rng32) -> Self {
         let mut out = Self::default();
         for limb in out.limbs.iter_mut() {
             *limb = u64::from_be_bytes(rng.gen_array());
@@ -291,7 +291,7 @@ impl<const LIMBS: usize> FromStr for Bignum<LIMBS> {
         let offset = if s.starts_with("0x") { 2 } else { 0 };
         let bytes = &s.as_bytes()[offset..];
         if bytes.len() > LIMBS * 16 {
-            return Err(u8::from_str_radix("1000", 10).unwrap_err());
+            return "-1".parse();
         }
 
         let mut out = Self::default();
@@ -308,19 +308,20 @@ impl<const LIMBS: usize> FromStr for Bignum<LIMBS> {
 
 impl<const LIMBS: usize> PartialOrd for Bignum<LIMBS> {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        self.limbs
-            .iter()
-            .zip(other.limbs.iter())
-            .rev()
-            .filter_map(|(a, b)| (a != b).then(|| a.cmp(b)))
-            .next()
-            .or(Some(Ordering::Equal))
+        Some(self.cmp(other))
     }
 }
 
 impl<const LIMBS: usize> Ord for Bignum<LIMBS> {
     fn cmp(&self, other: &Self) -> Ordering {
-        self.partial_cmp(other).unwrap()
+        self.limbs
+            .iter()
+            .zip(other.limbs.iter())
+            .rev()
+            .filter(|(a, b)| a != b)
+            .map(|(a, b)| a.cmp(b))
+            .next()
+            .unwrap_or(Ordering::Equal)
     }
 }
 
@@ -658,7 +659,8 @@ mod tests {
             ],
         };
         let one = 1u8.into();
-        assert!(a > one && one < a);
+        assert!(a > one);
+        assert!(one < a);
     }
 
     #[test]
@@ -1389,7 +1391,7 @@ mod tests {
             limbs: [0, u64::MAX, u64::MAX, 0, 0, 0, 0, 0b1000_0000, 0, u64::MAX],
         };
         assert_eq!(
-            a << 64 - 7,
+            a << (64 - 7),
             Bignum {
                 limbs: [
                     0,
@@ -1410,7 +1412,7 @@ mod tests {
             limbs: [0, u64::MAX, u64::MAX, 0, 0, 0, 0, 0b1000_0000, 0, u64::MAX],
         };
         assert_eq!(
-            a << 128 - 7,
+            a << (128 - 7),
             Bignum {
                 limbs: [
                     0,

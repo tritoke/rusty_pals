@@ -125,7 +125,7 @@ fn challenge6() -> ChallengeResult<()> {
     input.retain(|c| c != '\n');
     let data = b64decode(input)?;
 
-    let key = break_repeating_key_xor(&data, 2..=40, 4)?;
+    let key = break_repeating_key_xor(data, 2..=40, 4)?;
     assert_eq!(key, b"Terminator X: Bring the noise");
 
     Ok(())
@@ -137,7 +137,7 @@ fn challenge7() -> ChallengeResult<()> {
     input.retain(|c| c != '\n');
     let data = b64decode(input)?;
     let key = Aes128::new(b"YELLOW SUBMARINE");
-    let dec = decrypt(data, &key, Iv::Empty, Mode::ECB);
+    let dec = decrypt(data, key, Iv::Empty, Mode::ECB);
     let unpad = pkcs7_unpad(&dec[..])?;
 
     assert_eq!(unpad, include_bytes!("files/7_correct.txt"));

@@ -5,8 +5,8 @@ pub struct XorShift32 {
     state: u32,
 }
 
-impl Rng32 for XorShift32 {
-    fn new() -> Self {
+impl XorShift32 {
+    pub fn new() -> Self {
         loop {
             let seed = crate::rand::gen_random_seed();
             if seed != 0 {
@@ -14,10 +14,18 @@ impl Rng32 for XorShift32 {
             }
         }
     }
+}
 
-    fn from_seed(seed: u32) -> Self {
+impl Default for XorShift32 {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Rng32 for XorShift32 {
+    fn seed(&mut self, seed: u32) {
         assert!(seed != 0, "XorShift32 cannot be seeded with zero.");
-        Self { state: seed }
+        self.state = seed;
     }
 
     fn gen(&mut self) -> u32 {
@@ -37,6 +45,7 @@ mod tests {
     #[test]
     #[should_panic]
     fn test_xorshift32_zero_seed_fails() {
-        XorShift32::from_seed(0);
+        let mut rng = XorShift32::new();
+        rng.seed(0);
     }
 }

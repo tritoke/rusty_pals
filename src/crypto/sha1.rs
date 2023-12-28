@@ -279,12 +279,12 @@ impl Sha1 {
         let [mut a, mut b, mut c, mut d, mut e] = self.state;
         let mut temp: u32;
 
-        for t in 0..20 {
+        for &x in w.iter().take(20) {
             temp = a
                 .rotate_left(5)
                 .wrapping_add(b & c | !b & d)
                 .wrapping_add(e)
-                .wrapping_add(w[t])
+                .wrapping_add(x)
                 .wrapping_add(K[0]);
             e = d;
             d = c;
@@ -293,12 +293,12 @@ impl Sha1 {
             a = temp;
         }
 
-        for t in 20..40 {
+        for &x in w.iter().skip(20).take(20) {
             temp = a
                 .rotate_left(5)
                 .wrapping_add(b ^ c ^ d)
                 .wrapping_add(e)
-                .wrapping_add(w[t])
+                .wrapping_add(x)
                 .wrapping_add(K[1]);
             e = d;
             d = c;
@@ -307,12 +307,12 @@ impl Sha1 {
             a = temp;
         }
 
-        for t in 40..60 {
+        for &x in w.iter().skip(40).take(20) {
             temp = a
                 .rotate_left(5)
                 .wrapping_add(b & c | b & d | c & d)
                 .wrapping_add(e)
-                .wrapping_add(w[t])
+                .wrapping_add(x)
                 .wrapping_add(K[2]);
             e = d;
             d = c;
@@ -321,12 +321,12 @@ impl Sha1 {
             a = temp;
         }
 
-        for t in 60..80 {
+        for &x in w.iter().skip(60) {
             temp = a
                 .rotate_left(5)
                 .wrapping_add(b ^ c ^ d)
                 .wrapping_add(e)
-                .wrapping_add(w[t])
+                .wrapping_add(x)
                 .wrapping_add(K[3]);
             e = d;
             d = c;

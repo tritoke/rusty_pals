@@ -15,11 +15,8 @@ fn gen_random_seed() -> u32 {
 }
 
 pub trait Rng32 {
-    /// Seed from /dev/urandom
-    fn new() -> Self;
-
-    /// Create RNG from seed
-    fn from_seed(seed: u32) -> Self;
+    /// Seed the generator
+    fn seed(&mut self, seed: u32);
 
     /// Generate a 32 bit random value
     fn gen(&mut self) -> u32;
@@ -47,5 +44,15 @@ pub trait Rng32 {
         }
 
         out
+    }
+}
+
+impl<T: Rng32> Rng32 for &mut T {
+    fn seed(&mut self, seed: u32) {
+        (*self).seed(seed)
+    }
+
+    fn gen(&mut self) -> u32 {
+        (*self).gen()
     }
 }

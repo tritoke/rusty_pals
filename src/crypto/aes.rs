@@ -21,6 +21,7 @@ pub enum Mode {
 }
 
 /// Helpers derived from https://www.intel.com/content/dam/develop/external/us/en/documents/aes-wp-2012-09-22-v01-165683.pdf
+#[allow(clippy::needless_late_init)]
 mod helpers {
     use std::arch::x86_64::*;
     use std::{array, mem, ptr};
@@ -256,6 +257,14 @@ pub trait AesKeySchedule {
     fn round_key(&self, round: usize) -> __m128i;
 }
 
+impl<T: AesKeySchedule> AesKeySchedule for &T {
+    const ROUNDS: usize = Self::ROUNDS;
+
+    fn round_key(&self, round: usize) -> __m128i {
+        (*self).round_key(round)
+    }
+}
+
 #[derive(Debug, Copy, Clone)]
 pub struct Aes128 {
     key_schedule: [__m128i; 11],
@@ -379,14 +388,14 @@ impl From<[u8; 16]> for Iv {
 }
 
 /// Perform crypto using AES ECB mode
-fn encrypt_ecb(input: &[[u8; 16]], out: &mut [[u8; 16]], aes: &impl Aes) {
+fn encrypt_ecb(input: &[[u8; 16]], out: &mut [[u8; 16]], aes: impl Aes) {
     for (block, out_block) in input.iter().zip(out.iter_mut()) {
         aes.encrypt_block(block, out_block);
     }
 }
 
 /// Perform crypto using AES CBC mode
-fn encrypt_cbc(input: &[[u8; 16]], out: &mut [[u8; 16]], iv: Iv, aes: &impl Aes) {
+fn encrypt_cbc(input: &[[u8; 16]], out: &mut [[u8; 16]], iv: Iv, aes: impl Aes) {
     let mut state = iv.unwrap_block();
     for (block, out_block) in input.iter().zip(out.iter_mut()) {
         let input = xor_block_simd(block, &state);
@@ -418,7 +427,7 @@ impl CtrState {
 }
 
 /// Perform crypto using AES CTR mode
-fn encrypt_ctr(input: &[u8], out: &mut [u8], iv: Iv, aes: &impl Aes) {
+fn encrypt_ctr(input: &[u8], out: &mut [u8], iv: Iv, aes: impl Aes) {
     // split input and output into blocks / uneven
     let input_blocks_len = input.len() - (input.len() % 16);
     let (input_blocks, input_rem) = input.split_at(input_blocks_len);
@@ -449,7 +458,7 @@ fn encrypt_ctr(input: &[u8], out: &mut [u8], iv: Iv, aes: &impl Aes) {
 /// Perform AES crypto
 pub fn encrypt(
     input: impl AsRef<[u8]>,
-    key: &impl AesKeySchedule,
+    key: impl AesKeySchedule,
     iv: impl Into<Iv>,
     mode: Mode,
 ) -> Vec<u8> {
@@ -473,14 +482,14 @@ pub fn encrypt(
 }
 
 /// Perform decryption using AES ECB mode
-fn decrypt_ecb(input: &[[u8; 16]], out: &mut [[u8; 16]], aes: &impl Aes) {
+fn decrypt_ecb(input: &[[u8; 16]], out: &mut [[u8; 16]], aes: impl Aes) {
     for (block, out_block) in input.iter().zip(out.iter_mut()) {
         aes.decrypt_block(block, out_block);
     }
 }
 
 /// Perform decryption using AES CBC mode
-fn decrypt_cbc(input: &[[u8; 16]], out: &mut [[u8; 16]], iv: Iv, aes: &impl Aes) {
+fn decrypt_cbc(input: &[[u8; 16]], out: &mut [[u8; 16]], iv: Iv, aes: impl Aes) {
     let mut state = iv.unwrap_block();
     for (block, out_block) in input.iter().zip(out.iter_mut()) {
         aes.decrypt_block(block, out_block);
@@ -492,7 +501,7 @@ fn decrypt_cbc(input: &[[u8; 16]], out: &mut [[u8; 16]], iv: Iv, aes: &impl Aes)
 /// Perform AES decryption
 pub fn decrypt(
     input: impl AsRef<[u8]>,
-    key: &impl AesKeySchedule,
+    key: impl AesKeySchedule,
     iv: impl Into<Iv>,
     mode: Mode,
 ) -> Vec<u8> {
@@ -543,7 +552,7 @@ mod nist_tests {
             .decode_hex()
             .unwrap();
 
-        let output = encrypt(input, &key, Iv::Empty, Mode::ECB);
+        let output = encrypt(input, key, Iv::Empty, Mode::ECB);
         assert_eq!(output, correct_output);
     }
 
@@ -566,7 +575,7 @@ mod nist_tests {
             .decode_hex()
             .unwrap();
 
-        let output = decrypt(input, &key, Iv::Empty, Mode::ECB);
+        let output = decrypt(input, key, Iv::Empty, Mode::ECB);
         assert_eq!(output, correct_output);
     }
 
@@ -591,7 +600,7 @@ mod nist_tests {
             .decode_hex()
             .unwrap();
 
-        let output = encrypt(input, &key, Iv::Empty, Mode::ECB);
+        let output = encrypt(input, key, Iv::Empty, Mode::ECB);
         assert_eq!(output, correct_output);
     }
 
@@ -616,7 +625,7 @@ mod nist_tests {
             .decode_hex()
             .unwrap();
 
-        let output = decrypt(input, &key, Iv::Empty, Mode::ECB);
+        let output = decrypt(input, key, Iv::Empty, Mode::ECB);
         assert_eq!(output, correct_output);
     }
 
@@ -641,7 +650,7 @@ mod nist_tests {
             .decode_hex()
             .unwrap();
 
-        let output = encrypt(input, &key, Iv::Empty, Mode::ECB);
+        let output = encrypt(input, key, Iv::Empty, Mode::ECB);
         assert_eq!(output, correct_output);
     }
 
@@ -666,7 +675,7 @@ mod nist_tests {
             .decode_hex()
             .unwrap();
 
-        let output = decrypt(input, &key, Iv::Empty, Mode::ECB);
+        let output = decrypt(input, key, Iv::Empty, Mode::ECB);
         assert_eq!(output, correct_output);
     }
 
@@ -690,7 +699,7 @@ mod nist_tests {
             .decode_hex()
             .unwrap();
 
-        let output = encrypt(input, &key, iv, Mode::CBC);
+        let output = encrypt(input, key, iv, Mode::CBC);
         assert_eq!(output, correct_output);
     }
 
@@ -714,7 +723,7 @@ mod nist_tests {
             .decode_hex()
             .unwrap();
 
-        let output = decrypt(input, &key, iv, Mode::CBC);
+        let output = decrypt(input, key, iv, Mode::CBC);
         assert_eq!(output, correct_output);
     }
 
@@ -740,7 +749,7 @@ mod nist_tests {
             .decode_hex()
             .unwrap();
 
-        let output = encrypt(input, &key, iv, Mode::CBC);
+        let output = encrypt(input, key, iv, Mode::CBC);
         assert_eq!(output, correct_output);
     }
 
@@ -766,7 +775,7 @@ mod nist_tests {
             .decode_hex()
             .unwrap();
 
-        let output = decrypt(input, &key, iv, Mode::CBC);
+        let output = decrypt(input, key, iv, Mode::CBC);
         assert_eq!(output, correct_output);
     }
 
@@ -792,7 +801,7 @@ mod nist_tests {
             .decode_hex()
             .unwrap();
 
-        let output = encrypt(input, &key, iv, Mode::CBC);
+        let output = encrypt(input, key, iv, Mode::CBC);
         assert_eq!(output, correct_output);
     }
 
@@ -818,7 +827,7 @@ mod nist_tests {
             .decode_hex()
             .unwrap();
 
-        let output = decrypt(input, &key, iv, Mode::CBC);
+        let output = decrypt(input, key, iv, Mode::CBC);
         assert_eq!(output, correct_output);
     }
 }

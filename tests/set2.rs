@@ -72,7 +72,7 @@ fn challenge10() -> ChallengeResult<()> {
     let data = input.decode_b64()?;
     let key = Aes128::new(b"YELLOW SUBMARINE");
     let iv = [0u8; 16];
-    let mut dec = decrypt(&data, &key, iv, Mode::CBC);
+    let mut dec = decrypt(data, key, iv, Mode::CBC);
     pad::pkcs7_unpad_owned(&mut dec)?;
     assert_eq!(dec, include_bytes!("files/10_correct.txt"));
 
@@ -103,10 +103,10 @@ mod chal11 {
         let key = Aes128::new(&rng.gen_array());
         let gen_ecb = rng.gen_bool();
         let enc = if gen_ecb {
-            encrypt(&data, &key, Iv::Empty, Mode::ECB)
+            encrypt(data, key, Iv::Empty, Mode::ECB)
         } else {
             let iv = rng.gen_array();
-            encrypt(&data, &key, iv, Mode::CBC)
+            encrypt(data, key, iv, Mode::CBC)
         };
 
         Ok((gen_ecb, enc))
@@ -185,7 +185,7 @@ mod chal12 {
         // out input is of the form user-string || secret, so we can provide a string of 2*block_size
         // bytes to get two identical blocks at the beginning
         let enc = oracle.encrypt("A".repeat(2 * block_size));
-        if &enc[0..BLKSZ] != &enc[BLKSZ..2 * BLKSZ] {
+        if enc[0..BLKSZ] != enc[BLKSZ..2 * BLKSZ] {
             panic!("Oracle is not using the ECB crypto mode.");
         }
 
@@ -252,7 +252,7 @@ mod chal12 {
             pad::pkcs7_into(&mut data, Aes128::BLOCK_SIZE as u8);
 
             // Construct ECB(your-string || unknown-string, random-key)
-            encrypt(data, &self.key, Iv::Empty, Mode::ECB)
+            encrypt(data, self.key, Iv::Empty, Mode::ECB)
         }
     }
 
@@ -285,7 +285,7 @@ mod chal12 {
 
             for b in u8::MIN..=u8::MAX {
                 block[BLKSZ - 1] = b;
-                let mut enc = oracle.encrypt(&block);
+                let mut enc = oracle.encrypt(block);
                 enc.truncate(BLKSZ);
                 let arr: &[u8; BLKSZ] = cast_as_array(&enc[..]);
                 self.mapping.insert(*arr, b);
@@ -432,11 +432,11 @@ mod chal13 {
         fn encrypt_profile(&self, email: impl AsRef<str>) -> Vec<u8> {
             let mut data = profile_for(email.as_ref()).into_bytes();
             pkcs7_into(&mut data, Aes128::BLOCK_SIZE as u8);
-            encrypt(data, &self.key, Iv::Empty, Mode::ECB)
+            encrypt(data, self.key, Iv::Empty, Mode::ECB)
         }
 
         fn decrypt_profile(&self, data: Vec<u8>) -> ChallengeResult<CookieJar> {
-            let mut dec = decrypt(data, &self.key, Iv::Empty, Mode::ECB);
+            let mut dec = decrypt(data, self.key, Iv::Empty, Mode::ECB);
             pkcs7_unpad_owned(&mut dec)?;
             let profile = String::from_utf8(dec).expect("Failed to decrypt -");
             profile.parse()
@@ -462,7 +462,7 @@ mod chal13 {
         let plaintext = profile_for("");
 
         // Step 2: find the position where we can encrypt a block of 16 characters
-        let input_start = &plaintext
+        let input_start = plaintext
             .find("email=")
             .expect("Plaintext didn't contain email=, unable to find position")
             + "email=".len();
@@ -476,7 +476,7 @@ mod chal13 {
         // Step 3: encrypt an admin + padding chunk
         let mut admin_chunk = b"admin".to_vec();
         pkcs7_into(&mut admin_chunk, Aes128::BLOCK_SIZE as u8);
-        let enc = pm.encrypt_profile(&format!(
+        let enc = pm.encrypt_profile(format!(
             "{}{}",
             "A".repeat(padding),
             std::str::from_utf8(&admin_chunk)?
@@ -547,7 +547,7 @@ mod chal14 {
             pad::pkcs7_into(&mut data, Aes128::BLOCK_SIZE as u8);
 
             // Construct ECB(random-prefix || attacker-controlled || target-bytes, random-key)
-            encrypt(data, &self.key, Iv::Empty, Mode::ECB)
+            encrypt(data, self.key, Iv::Empty, Mode::ECB)
         }
     }
 
@@ -723,14 +723,14 @@ mod chall16 {
             pad::pkcs7_into(&mut s, Aes128::BLOCK_SIZE as u8);
             let iv = self.rng.gen_array();
             let mut enc = iv.to_vec();
-            enc.extend_from_slice(&encrypt(s, &self.key, iv, Mode::CBC));
+            enc.extend_from_slice(&encrypt(s, self.key, iv, Mode::CBC));
             enc
         }
 
         fn decrypt(&self, data: impl AsRef<[u8]>) -> bool {
             let data = data.as_ref();
             let (iv, data) = data.split_at(Aes128::BLOCK_SIZE);
-            let mut dec = decrypt(data, &self.key, *cast_as_array(iv), Mode::CBC);
+            let mut dec = decrypt(data, self.key, *cast_as_array(iv), Mode::CBC);
             if pad::pkcs7_unpad_owned(&mut dec).is_err() {
                 return false;
             }

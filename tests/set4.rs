@@ -47,7 +47,7 @@ mod chall25 {
             let mut rng = XorShift32::new();
             let key = Aes128::new(&rng.gen_array());
             let nonce = Iv::Nonce(u64::from_be_bytes(rng.gen_array()));
-            let ciphertext = encrypt(include_str!("files/7_correct.txt"), &key, nonce, Mode::CTR);
+            let ciphertext = encrypt(include_str!("files/7_correct.txt"), key, nonce, Mode::CTR);
 
             Self {
                 key,
@@ -57,12 +57,12 @@ mod chall25 {
         }
 
         fn edit(&self, offset: usize, newtext: impl AsRef<[u8]>) -> Vec<u8> {
-            let mut dec = decrypt(&self.ciphertext, &self.key, self.nonce, Mode::CTR);
+            let mut dec = decrypt(&self.ciphertext, self.key, self.nonce, Mode::CTR);
             for (d, n) in dec.iter_mut().skip(offset).zip(newtext.as_ref().iter()) {
                 *d = *n;
             }
 
-            encrypt(dec, &self.key, self.nonce, Mode::CTR)
+            encrypt(dec, self.key, self.nonce, Mode::CTR)
         }
     }
 
@@ -118,7 +118,7 @@ mod chall26 {
             let nonce_bytes = self.rng.gen_array();
             let nonce = u64::from_be_bytes(nonce_bytes);
             let mut enc = nonce_bytes.to_vec();
-            enc.extend_from_slice(&encrypt(s, &self.key, nonce, Mode::CTR));
+            enc.extend_from_slice(&encrypt(s, self.key, nonce, Mode::CTR));
             enc
         }
 
@@ -126,7 +126,7 @@ mod chall26 {
             let data = data.as_ref();
             let (nonce_bytes, data) = data.split_at(mem::size_of::<u64>());
             let nonce = u64::from_be_bytes(*cast_as_array(nonce_bytes));
-            let dec = decrypt(data, &self.key, nonce, Mode::CTR);
+            let dec = decrypt(data, self.key, nonce, Mode::CTR);
             let text = String::from_utf8_lossy(&dec);
 
             let needle = ";admin=true;";
@@ -198,12 +198,12 @@ mod chall27 {
             }
             s.extend_from_slice(b";comment2=%20like%20a%20pound%20of%20bacon");
             pad::pkcs7_into(&mut s, Aes128::BLOCK_SIZE as u8);
-            encrypt(s, &self.key, self.iv, Mode::CBC)
+            encrypt(s, self.key, self.iv, Mode::CBC)
         }
 
         fn decrypt(&self, data: impl AsRef<[u8]>) -> Result<bool, Vec<u8>> {
             let data = data.as_ref();
-            let dec = decrypt(data, &self.key, self.iv, Mode::CBC);
+            let dec = decrypt(data, self.key, self.iv, Mode::CBC);
             let needle = ";admin=true;";
             String::from_utf8(dec)
                 .map(|text| text.contains(needle))
@@ -315,7 +315,7 @@ mod chall29 {
     fn challenge29() {
         let chall: Challenge<Sha1> = Challenge::new();
         let data = b"comment1=cooking%20MCs;userdata=foo;comment2=%20like%20a%20pound%20of%20bacon";
-        let mac = chall.mac(&data);
+        let mac = chall.mac(data);
         let (new_data, new_mac) = attack(data, mac);
         assert!(new_data.ends_with(b";admin=true"));
         assert!(chall.is_message_valid(new_data, new_mac));
@@ -363,7 +363,7 @@ mod chall30 {
     fn challenge30() {
         let chall: Challenge<Md4> = Challenge::new();
         let data = b"comment1=cooking%20MCs;userdata=foo;comment2=%20like%20a%20pound%20of%20bacon";
-        let mac = chall.mac(&data);
+        let mac = chall.mac(data);
         let (new_data, new_mac) = attack(data, mac);
         assert!(new_data.ends_with(b";admin=true"));
         assert!(chall.is_message_valid(new_data, new_mac));
@@ -423,7 +423,6 @@ mod chall31 {
 
         for i in 0..recovered.len() {
             let (byte, _time) = (u8::MIN..=u8::MAX)
-                .into_iter()
                 .map(|b| {
                     recovered[i] = b;
                     (b, chall.challenge(data, Digest(recovered)).1)
@@ -504,7 +503,6 @@ mod chall32 {
 
         for i in 0..recovered.len() {
             recovered[i] = (u8::MIN..=u8::MAX)
-                .into_iter()
                 .max_by_key(|&guess| {
                     recovered[i] = guess;
 

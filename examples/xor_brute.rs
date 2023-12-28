@@ -92,7 +92,7 @@ fn main() -> Result<()> {
     out.write_all(&dec)?;
 
     // if writing to stdout and not ending with a newline, write a newline
-    if args.output == "-" && !(dec.last() == Some(&b'\n')) {
+    if args.output == "-" && dec.last() != Some(&b'\n') {
         out.write_all(b"\n")?;
     }
 
