@@ -13,6 +13,13 @@ pub struct Bignum<const LIMBS: usize> {
     limbs: [u64; LIMBS],
 }
 
+impl<const LIMBS: usize> AsRef<[u8]> for Bignum<LIMBS> {
+    fn as_ref(&self) -> &[u8] {
+        // SAFETY: I mean whats a u64 bu 8 u8 in a trenchcoat anyway??
+        unsafe { std::mem::transmute(&self.limbs[..]) }
+    }
+}
+
 pub mod nist_consts {
     use super::Bignum;
 
