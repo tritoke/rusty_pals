@@ -524,8 +524,6 @@ mod chall32 {
         let chall = Challenge::new();
         let data = b"My name is jeff and I can count to 1 milllion!!!";
         let sig = attack::<10>(&chall, data);
-        dbg!(chall.hmacer.mac(data));
-        dbg!(sig);
         assert_eq!(chall.challenge(data, sig).0, 200);
     }
 }

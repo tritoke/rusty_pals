@@ -224,7 +224,7 @@ mod chall19 {
         for (&ct1, &ct2) in cts.iter().zip(cts.iter().skip(1)) {
             let cl = usize::min(ct1.len(), ct2.len());
             let xorred = xor_blocks(&ct1[..cl], &ct2[..cl])?;
-            dbg!(xorred.encode_hex());
+            xorred.encode_hex();
         }
         todo!("fuck this")
     }
