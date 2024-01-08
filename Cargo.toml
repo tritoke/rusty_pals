@@ -8,3 +8,6 @@ edition = "2021"
 [dev-dependencies]
 clap = { version = "4.0", features = ["derive", "color"] }
 anyhow = "1.0"
+
+[profile.release]
+debug = true

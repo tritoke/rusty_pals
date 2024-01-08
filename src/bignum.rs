@@ -1,3 +1,8 @@
+#![allow(clippy::clone_on_copy)]
+
+//! THE BIBLE: https://cacr.uwaterloo.ca/hac/about/chap14.pdf
+
+use crate::monty::Monty;
 use crate::rand::Rng32;
 use std::cmp::Ordering;
 use std::fmt;
@@ -15,7 +20,7 @@ pub struct Bignum<const LIMBS: usize> {
 
 impl<const LIMBS: usize> AsRef<[u8]> for Bignum<LIMBS> {
     fn as_ref(&self) -> &[u8] {
-        // SAFETY: I mean whats a u64 bu 8 u8 in a trenchcoat anyway??
+        // SAFETY: I mean whats a u64 but 8 u8 in a trenchcoat anyway??
         unsafe { std::mem::transmute(&self.limbs[..]) }
     }
 }
@@ -83,8 +88,29 @@ pub mod nist_consts {
     };
 }
 
+// we dont have nightly but i can steal from nightly >:)
+#[inline]
+const fn carrying_add(x: u64, y: u64, carry: bool) -> (u64, bool) {
+    let (a, b) = x.overflowing_add(y);
+    let (c, d) = a.overflowing_add(carry as u64);
+    (c, b != d)
+}
+
+#[inline]
+const fn borrowing_sub(x: u64, y: u64, carry: bool) -> (u64, bool) {
+    let (a, b) = x.overflowing_sub(y);
+    let (c, d) = a.overflowing_sub(carry as u64);
+    (c, b != d)
+}
+
+#[inline]
+const fn carrying_mul(x: u64, y: u64, carry: u64) -> (u64, u64) {
+    // unchecked is nightly so checked it is
+    let wide = x as u128 * y as u128 + carry as u128;
+    (wide as u64, (wide >> 64) as u64)
+}
+
 // utility functions
-#[allow(dead_code)]
 impl<const LIMBS: usize> Bignum<LIMBS> {
     pub const MAX: Self = Self {
         limbs: [u64::MAX; LIMBS],
@@ -123,8 +149,7 @@ impl<const LIMBS: usize> Bignum<LIMBS> {
             .limbs
             .iter()
             .rev()
-            .map(|limb| limb.leading_zeros())
-            .take_while(|zeros| *zeros == 64)
+            .take_while(|&&limb| limb == 0)
             .count();
         let final_limb_leading_ones = self
             .limbs
@@ -135,12 +160,7 @@ impl<const LIMBS: usize> Bignum<LIMBS> {
     }
 
     pub fn trailing_zeros(&self) -> u32 {
-        let one_pos = self
-            .limbs
-            .iter()
-            .map(|limb| limb.trailing_zeros())
-            .take_while(|zeros| *zeros == 64)
-            .count();
+        let one_pos = self.limbs.iter().take_while(|&&limb| limb == 0).count();
         let final_limb_trailing_zeros = self
             .limbs
             .get(one_pos)
@@ -154,8 +174,7 @@ impl<const LIMBS: usize> Bignum<LIMBS> {
             .limbs
             .iter()
             .rev()
-            .map(|limb| limb.leading_ones())
-            .take_while(|ones| *ones == 64)
+            .take_while(|&&limb| limb == u64::MAX)
             .count();
         let final_limb_leading_ones = self
             .limbs
@@ -169,8 +188,7 @@ impl<const LIMBS: usize> Bignum<LIMBS> {
         let zero_pos = self
             .limbs
             .iter()
-            .map(|limb| limb.trailing_ones())
-            .take_while(|ones| *ones == 64)
+            .take_while(|&&limb| limb == u64::MAX)
             .count();
         let final_limb_trailing_ones = self.limbs.get(zero_pos).unwrap_or(&0).trailing_ones();
         zero_pos as u32 * 64 + final_limb_trailing_ones
@@ -183,9 +201,7 @@ impl<const LIMBS: usize> Bignum<LIMBS> {
 
     /// Test if bit N is set
     pub fn test_bit(&self, bit: usize) -> bool {
-        if bit > 64 * LIMBS {
-            panic!("attempt to test bit with overflow");
-        }
+        debug_assert!(bit < 64 * LIMBS, "attempt to test bit with overflow");
 
         let limb_idx = bit / 64;
         let bit_idx = bit % 64;
@@ -194,33 +210,28 @@ impl<const LIMBS: usize> Bignum<LIMBS> {
     }
 
     pub fn random(mut rng: impl Rng32) -> Self {
-        let mut out = Self::default();
+        let mut out = Self::ZERO;
         for limb in out.limbs.iter_mut() {
             *limb = u64::from_be_bytes(rng.gen_array());
         }
         out
     }
-}
 
-#[allow(dead_code)]
-impl<const LIMBS: usize> Bignum<LIMBS> {
-    // performs both division and mod and returns the pair (div, mod)
-    pub fn divmod(&self, rhs: Self) -> (Self, Self) {
-        if rhs.is_zero() {
-            panic!("attempt to divide by zero");
-        }
+    /// performs both division and mod and returns the pair (div, mod)
+    pub fn divmod(&self, rhs: &Self) -> (Self, Self) {
+        debug_assert!(!rhs.is_zero(), "attempt to divide by zero");
 
-        // early exit for simple cases
+        // early exit for simple cases - CT is hard lmao
         if rhs.is_one() {
             return (*self, Bignum::ZERO);
         }
 
-        if rhs > *self {
+        if rhs > self {
             return (Bignum::ZERO, *self);
         }
 
         let mut dividend = *self;
-        let mut divisor = rhs;
+        let mut divisor = *rhs;
 
         // normalise divisor
         let normalising_shift = divisor.leading_zeros() - dividend.leading_zeros();
@@ -231,7 +242,7 @@ impl<const LIMBS: usize> Bignum<LIMBS> {
         let mut quotient = Bignum::ZERO;
 
         // perform the division
-        while dividend >= rhs {
+        while &dividend >= rhs {
             quotient <<= 1;
             if dividend >= divisor {
                 dividend -= divisor;
@@ -246,8 +257,8 @@ impl<const LIMBS: usize> Bignum<LIMBS> {
     }
 
     pub fn modexp(self, exponent: Self, prime: Self) -> Self {
-        assert!(self.bit_length() <= LIMBS as u32 * 32);
-        assert!(prime.bit_length() <= LIMBS as u32 * 32);
+        debug_assert!(self.bit_length() <= LIMBS as u32 * 32);
+        debug_assert!(prime.bit_length() <= LIMBS as u32 * 32);
 
         if exponent.is_zero() {
             return Bignum::ONE;
@@ -263,6 +274,191 @@ impl<const LIMBS: usize> Bignum<LIMBS> {
         }
 
         (x * y) % prime
+    }
+}
+
+impl<const LIMBS: usize> Bignum<LIMBS> {
+    pub(super) fn add_with_overflow(&mut self, rhs: &Self) -> bool {
+        let mut carry = false;
+        for (l, r) in self.limbs.iter_mut().zip(rhs.limbs.iter()) {
+            let (sum, overflow) = carrying_add(*l, *r, carry);
+            *l = sum;
+            carry = overflow;
+        }
+        carry
+    }
+
+    fn sub_with_overflow(&mut self, rhs: &Self) -> bool {
+        let mut carry = false;
+        for (l, r) in self.limbs.iter_mut().zip(rhs.limbs.iter()) {
+            let (sum, overflow) = borrowing_sub(*l, *r, carry);
+            *l = sum;
+            carry = overflow;
+        }
+        carry
+    }
+
+    fn mul_with_overflow(&mut self, rhs: &Self) -> bool {
+        let mut out = Self::ZERO.clone();
+        let mut overflow = false;
+
+        for (i, r) in rhs.limbs.iter().enumerate() {
+            let mut carry = 0;
+            for (l, o) in self.limbs.iter().zip(out.limbs.iter_mut().skip(i)) {
+                let (prod, next_carry) = carrying_mul(*r, *l, carry);
+                let (new_limb, add_carry) = o.overflowing_add(prod);
+                carry = next_carry + u64::from(add_carry);
+                *o = new_limb;
+            }
+
+            overflow |= carry != 0;
+        }
+
+        *self = out;
+        overflow
+    }
+
+    fn shr_with_overflow(&mut self, rhs: u32) -> bool {
+        if rhs as usize > LIMBS * 64 {
+            *self = Self::ZERO;
+            return true;
+        }
+
+        // we have 64 * LIMBS total bits
+        // a shift of N bits moves the top 64 * LIMBS - N bits to the lowest bits
+        // meaning the lowest eventual limb is
+        let bottom_limb = rhs as usize / 64;
+        let limb_split_pos = rhs % 64;
+
+        // we can optimise for word aligned shifts
+        if limb_split_pos == 0 {
+            self.limbs.copy_within(bottom_limb..LIMBS, 0)
+        } else {
+            for i in 0..(LIMBS - bottom_limb - 1) {
+                let upper = self.limbs[bottom_limb + i + 1] << (64 - limb_split_pos);
+                let lower = self.limbs[bottom_limb + i] >> limb_split_pos;
+                self.limbs[i] = upper | lower;
+            }
+
+            self.limbs[LIMBS - bottom_limb - 1] = self.limbs[LIMBS - 1] >> limb_split_pos;
+        }
+
+        for i in 0..bottom_limb {
+            self.limbs[LIMBS - i - 1] = 0;
+        }
+
+        false
+    }
+
+    fn shl_with_overflow(&mut self, rhs: u32) -> bool {
+        if rhs as usize > LIMBS * 64 {
+            *self = Self::ZERO;
+            return true;
+        }
+
+        // we have 64 * LIMBS total bits
+        // a shift of N bits moves the top 64 * LIMBS - N bits to the lowest bits
+        // meaning the lowest eventual limb is
+        let bottom_limb = rhs as usize / 64;
+        let limb_split_pos = rhs % 64;
+
+        // we can optimise for word aligned shifts
+        if limb_split_pos == 0 {
+            self.limbs.copy_within(0..LIMBS - bottom_limb, bottom_limb)
+        } else {
+            for i in (bottom_limb + 1..LIMBS).rev() {
+                let upper = self.limbs[i - bottom_limb] << limb_split_pos;
+                let lower = self.limbs[i - bottom_limb - 1] >> (64 - limb_split_pos);
+                self.limbs[i] = upper | lower;
+            }
+
+            self.limbs[bottom_limb] = self.limbs[0] << limb_split_pos;
+        }
+
+        for i in 0..bottom_limb {
+            self.limbs[i] = 0;
+        }
+
+        false
+    }
+
+    fn bitwise_and(&mut self, rhs: &Self) {
+        for (o, i) in self.limbs.iter_mut().zip(rhs.limbs.iter()) {
+            *o &= *i;
+        }
+    }
+
+    fn bitwise_or(&mut self, rhs: &Self) {
+        for (o, i) in self.limbs.iter_mut().zip(rhs.limbs.iter()) {
+            *o |= *i;
+        }
+    }
+
+    fn bitwise_xor(&mut self, rhs: &Self) {
+        for (o, i) in self.limbs.iter_mut().zip(rhs.limbs.iter()) {
+            *o ^= *i;
+        }
+    }
+
+    fn quotient(&mut self, rhs: &Self) {
+        *self = self.divmod(rhs).0;
+    }
+
+    fn remainder(&mut self, rhs: &Self) {
+        *self = self.divmod(rhs).1;
+    }
+
+    fn bezouts_coeffs(a: &Self, b: &Self) -> (Self, Self) {
+        let (mut s, mut old_s) = (Self::ZERO, Self::ONE);
+        let (mut r, mut old_r) = (b.clone(), a.clone());
+
+        let mut tmp;
+        while !r.is_zero() {
+            let quotient = old_r / r;
+
+            tmp = old_r;
+            old_r = r;
+            r = tmp - quotient * r;
+            // (old_r, r) = (r, old_r - quotient * r);
+
+            tmp = old_s;
+            old_s = s;
+            s = tmp - quotient * s;
+            // (old_s, s) = (s, old_s - quotient * s);
+        }
+
+        let bezout_t = if b.is_zero() {
+            Self::ZERO
+        } else {
+            old_r - old_s * a
+        };
+
+        (old_s, bezout_t)
+    }
+
+    /// Converts to a montgomery form bigint with modulus r
+    ///
+    /// - assumes N to be 2^(LIMBS-2)
+    fn to_monty(r: &Self) -> Monty<LIMBS> {
+        // to do montgomery form operations we need 2 limbs of working space
+        debug_assert!(r.limbs[LIMBS - 1] == 0 && r.limbs[LIMBS - 2] == 0);
+
+        let mut n = Self::ZERO;
+        n.limbs[LIMBS - 2] = 1;
+
+        dbg!(Self::bezouts_coeffs(r, &n));
+        todo!()
+    }
+}
+
+impl<const LIMBS: usize> Not for Bignum<LIMBS> {
+    type Output = Self;
+    fn not(self) -> Self::Output {
+        let mut out = self;
+        for o in out.limbs.iter_mut() {
+            *o = !*o;
+        }
+        out
     }
 }
 
@@ -294,14 +490,15 @@ impl<const LIMBS: usize> fmt::Display for Bignum<LIMBS> {
 impl<const LIMBS: usize> FromStr for Bignum<LIMBS> {
     type Err = ParseIntError;
 
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
+    fn from_str(mut s: &str) -> Result<Self, Self::Err> {
+        s = s.strip_prefix("0x").unwrap_or(s);
         let offset = if s.starts_with("0x") { 2 } else { 0 };
         let bytes = &s.as_bytes()[offset..];
-        if bytes.len() > LIMBS * 16 {
-            return "-1".parse();
+        if bytes.len() > LIMBS * 16 || s.starts_with('-') {
+            return Err(u8::from_str("-1").unwrap_err());
         }
 
-        let mut out = Self::default();
+        let mut out = Self::ZERO;
         for (limb, chunk) in out.limbs.iter_mut().zip(bytes.chunks(16).rev()) {
             *limb = u64::from_str_radix(
                 std::str::from_utf8(chunk).expect("MMH WHY IS THERE UNICODE IN YOUR NUMBER BOI"),
@@ -325,9 +522,8 @@ impl<const LIMBS: usize> Ord for Bignum<LIMBS> {
             .iter()
             .zip(other.limbs.iter())
             .rev()
-            .filter(|(a, b)| a != b)
             .map(|(a, b)| a.cmp(b))
-            .next()
+            .find(|ordering| *ordering != Ordering::Equal)
             .unwrap_or(Ordering::Equal)
     }
 }
@@ -349,270 +545,262 @@ impl_from_for_bignum!(u32);
 impl_from_for_bignum!(u16);
 impl_from_for_bignum!(u8);
 
-// we dont have nightly but i can steal from nightly >:)
-#[inline]
-const fn carrying_add(x: u64, y: u64, carry: bool) -> (u64, bool) {
-    let (a, b) = x.overflowing_add(y);
-    let (c, d) = a.overflowing_add(carry as u64);
-    (c, b != d)
-}
+macro_rules! bignum_arith_impls {
+    ($rhs:ty, allow_rhs_ref, $trait:ident, $op:ident, $trait_assign:ident, $op_assign:ident, $method:ident, $overflow_message:literal) => {
+        impl<const LIMBS: usize> $trait<$rhs> for Bignum<LIMBS> {
+            type Output = Self;
 
-#[inline]
-const fn borrowing_sub(x: u64, y: u64, carry: bool) -> (u64, bool) {
-    let (a, b) = x.overflowing_sub(y);
-    let (c, d) = a.overflowing_sub(carry as u64);
-    (c, b != d)
-}
-
-#[inline]
-const fn carrying_mul(x: u64, y: u64, carry: u64) -> (u64, u64) {
-    // unchecked is nightly so checked it is
-    let wide = x as u128 * y as u128 + carry as u128;
-    (wide as u64, (wide >> 64) as u64)
-}
-
-impl<const LIMBS: usize> Add for Bignum<LIMBS> {
-    type Output = Self;
-
-    fn add(self, rhs: Self) -> Self::Output {
-        // implement add in terms of AddAssign
-        let mut out = self;
-        out += rhs;
-        out
-    }
-}
-
-impl<const LIMBS: usize> AddAssign for Bignum<LIMBS> {
-    fn add_assign(&mut self, rhs: Self) {
-        let mut carry = false;
-        for (l, r) in self.limbs.iter_mut().zip(rhs.limbs.iter()) {
-            let (sum, overflow) = carrying_add(*l, *r, carry);
-            *l = sum;
-            carry = overflow;
-        }
-
-        if carry {
-            panic!("attempt to add with overflow")
-        }
-    }
-}
-
-impl<const LIMBS: usize> Sub for Bignum<LIMBS> {
-    type Output = Self;
-
-    fn sub(self, rhs: Self) -> Self::Output {
-        // implement sub in terms of SubAssign
-        let mut out = self;
-        out -= rhs;
-        out
-    }
-}
-
-impl<const LIMBS: usize> SubAssign for Bignum<LIMBS> {
-    fn sub_assign(&mut self, rhs: Self) {
-        let mut carry = false;
-        for (l, r) in self.limbs.iter_mut().zip(rhs.limbs.iter()) {
-            let (sum, overflow) = borrowing_sub(*l, *r, carry);
-            *l = sum;
-            carry = overflow;
-        }
-
-        if carry {
-            panic!("attempt to add with overflow")
-        }
-    }
-}
-
-impl<const LIMBS: usize> Mul for Bignum<LIMBS> {
-    type Output = Self;
-
-    fn mul(self, rhs: Self) -> Self::Output {
-        let mut out = Self::default();
-
-        for (i, r) in rhs.limbs.iter().enumerate() {
-            let mut carry = 0;
-            for (l, o) in self.limbs.iter().zip(out.limbs.iter_mut().skip(i)) {
-                let (prod, next_carry) = carrying_mul(*r, *l, carry);
-                let (new_limb, add_carry) = o.overflowing_add(prod);
-                carry = next_carry + u64::from(add_carry);
-                *o = new_limb;
-            }
-
-            if carry != 0 {
-                panic!("attempt to mul with overflow");
+            fn $op(self, rhs: $rhs) -> Self::Output {
+                let mut out = self.clone();
+                let overflow = out.$method(&rhs);
+                debug_assert!(!overflow, $overflow_message);
+                out
             }
         }
 
-        out
-    }
-}
+        impl<const LIMBS: usize> $trait<&$rhs> for Bignum<LIMBS> {
+            type Output = Self;
 
-impl<const LIMBS: usize> MulAssign for Bignum<LIMBS> {
-    fn mul_assign(&mut self, rhs: Self) {
-        *self = *self * rhs;
-    }
-}
-
-impl<const LIMBS: usize> Rem for Bignum<LIMBS> {
-    type Output = Self;
-    fn rem(self, rhs: Self) -> Self::Output {
-        self.divmod(rhs).1
-    }
-}
-
-impl<const LIMBS: usize> RemAssign for Bignum<LIMBS> {
-    fn rem_assign(&mut self, rhs: Self) {
-        *self = *self % rhs;
-    }
-}
-
-impl<const LIMBS: usize> Div for Bignum<LIMBS> {
-    type Output = Self;
-    fn div(self, rhs: Self) -> Self::Output {
-        self.divmod(rhs).0
-    }
-}
-
-impl<const LIMBS: usize> DivAssign for Bignum<LIMBS> {
-    fn div_assign(&mut self, rhs: Self) {
-        *self = *self / rhs;
-    }
-}
-
-impl<const LIMBS: usize> Shr<u32> for Bignum<LIMBS> {
-    type Output = Self;
-
-    fn shr(self, rhs: u32) -> Self::Output {
-        if rhs as usize > LIMBS * 64 {
-            panic!("attempt to shift right with overflow");
+            fn $op(self, rhs: &$rhs) -> Self::Output {
+                let mut out = self.clone();
+                let overflow = out.$method(rhs);
+                debug_assert!(!overflow, $overflow_message);
+                out
+            }
         }
 
-        let mut out = Self::default();
+        impl<const LIMBS: usize> $trait<$rhs> for &Bignum<LIMBS> {
+            type Output = Bignum<LIMBS>;
 
-        // we have 64 * LIMBS total bits
-        // a shift of N bits moves the top 64 * LIMBS - N bits to the lowest bits
-        // meaning the lowest eventual limb is
-        let bottom_limb = rhs as usize / 64;
-        let limb_split_pos = rhs % 64;
-
-        // chain on the final limb so that we correctly set the last limb of the output
-        let last_pair = &[self.limbs[LIMBS - 1], 0][..];
-        let limb_pairs = self
-            .limbs
-            .windows(2)
-            .skip(bottom_limb)
-            .chain(std::iter::once(last_pair));
-        for (o, limb_pair) in out.limbs.iter_mut().zip(limb_pairs) {
-            let upper = limb_pair[1].checked_shl(64 - limb_split_pos).unwrap_or(0);
-            *o = (limb_pair[0] >> limb_split_pos) | upper;
+            fn $op(self, rhs: $rhs) -> Self::Output {
+                let mut out = self.clone();
+                let overflow = out.$method(&rhs);
+                debug_assert!(!overflow, $overflow_message);
+                out
+            }
         }
 
-        out
-    }
-}
+        impl<const LIMBS: usize> $trait<&$rhs> for &Bignum<LIMBS> {
+            type Output = Bignum<LIMBS>;
 
-impl<const LIMBS: usize> ShrAssign<u32> for Bignum<LIMBS> {
-    fn shr_assign(&mut self, rhs: u32) {
-        *self = *self >> rhs;
-    }
-}
-
-impl<const LIMBS: usize> Shl<u32> for Bignum<LIMBS> {
-    type Output = Self;
-
-    fn shl(self, rhs: u32) -> Self::Output {
-        if rhs as usize > LIMBS * 64 {
-            panic!("attempt to shift left with overflow");
+            fn $op(self, rhs: &$rhs) -> Self::Output {
+                let mut out = self.clone();
+                let overflow = out.$method(rhs);
+                debug_assert!(!overflow, $overflow_message);
+                out
+            }
         }
 
-        let mut out = Self::default();
-
-        // we have 64 * LIMBS total bits
-        // a shift of N bits moves the top 64 * LIMBS - N bits to the lowest bits
-        // meaning the lowest eventual limb is
-        let bottom_limb = rhs as usize / 64;
-        let limb_split_pos = rhs % 64;
-
-        // chain on the final limb so that we correctly set the last limb of the output
-        let first_pair = &[0, self.limbs[0]][..];
-        let limb_pairs = std::iter::once(first_pair).chain(self.limbs.windows(2));
-        let out_limbs = out.limbs.iter_mut().skip(bottom_limb);
-        for (o, limb_pair) in out_limbs.zip(limb_pairs) {
-            let lower = limb_pair[0].checked_shr(64 - limb_split_pos).unwrap_or(0);
-            *o = lower | (limb_pair[1] << limb_split_pos);
+        impl<const LIMBS: usize> $trait_assign<$rhs> for Bignum<LIMBS> {
+            fn $op_assign(&mut self, rhs: $rhs) {
+                let overflow = self.$method(&rhs);
+                debug_assert!(!overflow, $overflow_message);
+            }
         }
 
-        out
-    }
-}
-
-impl<const LIMBS: usize> ShlAssign<u32> for Bignum<LIMBS> {
-    fn shl_assign(&mut self, rhs: u32) {
-        *self = *self << rhs;
-    }
-}
-
-impl<const LIMBS: usize> BitAnd for Bignum<LIMBS> {
-    type Output = Self;
-    fn bitand(self, rhs: Self) -> Self::Output {
-        let mut out = self;
-        out &= rhs;
-        out
-    }
-}
-
-impl<const LIMBS: usize> BitAndAssign for Bignum<LIMBS> {
-    fn bitand_assign(&mut self, rhs: Self) {
-        for (l, r) in self.limbs.iter_mut().zip(rhs.limbs) {
-            *l &= r;
+        impl<const LIMBS: usize> $trait_assign<&$rhs> for Bignum<LIMBS> {
+            fn $op_assign(&mut self, rhs: &$rhs) {
+                let overflow = self.$method(rhs);
+                debug_assert!(!overflow, $overflow_message);
+            }
         }
-    }
-}
+    };
 
-impl<const LIMBS: usize> BitOr for Bignum<LIMBS> {
-    type Output = Self;
-    fn bitor(self, rhs: Self) -> Self::Output {
-        let mut out = self;
-        out |= rhs;
-        out
-    }
-}
+    ($rhs:ty, allow_rhs_ref, $trait:ident, $op:ident, $trait_assign:ident, $op_assign:ident, $method:ident, no_overflow) => {
+        impl<const LIMBS: usize> $trait<$rhs> for Bignum<LIMBS> {
+            type Output = Self;
 
-impl<const LIMBS: usize> BitOrAssign for Bignum<LIMBS> {
-    fn bitor_assign(&mut self, rhs: Self) {
-        for (l, r) in self.limbs.iter_mut().zip(rhs.limbs) {
-            *l |= r;
+            fn $op(self, rhs: $rhs) -> Self::Output {
+                let mut out = self.clone();
+                out.$method(&rhs);
+                out
+            }
         }
-    }
-}
 
-impl<const LIMBS: usize> BitXor for Bignum<LIMBS> {
-    type Output = Self;
-    fn bitxor(self, rhs: Self) -> Self::Output {
-        let mut out = self;
-        out ^= rhs;
-        out
-    }
-}
+        impl<const LIMBS: usize> $trait<&$rhs> for Bignum<LIMBS> {
+            type Output = Self;
 
-impl<const LIMBS: usize> BitXorAssign for Bignum<LIMBS> {
-    fn bitxor_assign(&mut self, rhs: Self) {
-        for (l, r) in self.limbs.iter_mut().zip(rhs.limbs) {
-            *l ^= r;
+            fn $op(self, rhs: &$rhs) -> Self::Output {
+                let mut out = self.clone();
+                out.$method(rhs);
+                out
+            }
         }
-    }
+
+        impl<const LIMBS: usize> $trait<$rhs> for &Bignum<LIMBS> {
+            type Output = Bignum<LIMBS>;
+
+            fn $op(self, rhs: $rhs) -> Self::Output {
+                let mut out = self.clone();
+                out.$method(&rhs);
+                out
+            }
+        }
+
+        impl<const LIMBS: usize> $trait<&$rhs> for &Bignum<LIMBS> {
+            type Output = Bignum<LIMBS>;
+
+            fn $op(self, rhs: &$rhs) -> Self::Output {
+                let mut out = self.clone();
+                out.$method(rhs);
+                out
+            }
+        }
+
+        impl<const LIMBS: usize> $trait_assign<$rhs> for Bignum<LIMBS> {
+            fn $op_assign(&mut self, rhs: $rhs) {
+                self.$method(&rhs)
+            }
+        }
+
+        impl<const LIMBS: usize> $trait_assign<&$rhs> for Bignum<LIMBS> {
+            fn $op_assign(&mut self, rhs: &$rhs) {
+                self.$method(rhs)
+            }
+        }
+    };
+
+    ($rhs:ty, no_rhs_ref, $trait:ident, $op:ident, $trait_assign:ident, $op_assign:ident, $method:ident, $overflow_message:literal) => {
+        impl<const LIMBS: usize> $trait<$rhs> for Bignum<LIMBS> {
+            type Output = Self;
+
+            fn $op(self, rhs: $rhs) -> Self::Output {
+                let mut out = self.clone();
+                let overflow = out.$method(rhs);
+                debug_assert!(!overflow, $overflow_message);
+                out
+            }
+        }
+
+        impl<const LIMBS: usize> $trait<$rhs> for &Bignum<LIMBS> {
+            type Output = Bignum<LIMBS>;
+
+            fn $op(self, rhs: $rhs) -> Self::Output {
+                let mut out = self.clone();
+                let overflow = out.$method(rhs);
+                debug_assert!(!overflow, $overflow_message);
+                out
+            }
+        }
+
+        impl<const LIMBS: usize> $trait_assign<$rhs> for Bignum<LIMBS> {
+            fn $op_assign(&mut self, rhs: $rhs) {
+                let overflow = self.$method(rhs);
+                debug_assert!(!overflow, $overflow_message);
+            }
+        }
+    };
 }
 
-impl<const LIMBS: usize> Not for Bignum<LIMBS> {
-    type Output = Self;
-    fn not(self) -> Self::Output {
-        let mut out = self;
-        for o in out.limbs.iter_mut() {
-            *o = !*o;
-        }
-        out
-    }
-}
+bignum_arith_impls!(
+    Bignum<LIMBS>,
+    allow_rhs_ref,
+    Add,
+    add,
+    AddAssign,
+    add_assign,
+    add_with_overflow,
+    "attempt to add with overflow"
+);
+
+bignum_arith_impls!(
+    Bignum<LIMBS>,
+    allow_rhs_ref,
+    Sub,
+    sub,
+    SubAssign,
+    sub_assign,
+    sub_with_overflow,
+    "attempt to subtract with overflow"
+);
+
+bignum_arith_impls!(
+    Bignum<LIMBS>,
+    allow_rhs_ref,
+    Mul,
+    mul,
+    MulAssign,
+    mul_assign,
+    mul_with_overflow,
+    "attempt to multiply with overflow"
+);
+
+bignum_arith_impls!(
+    u32,
+    no_rhs_ref,
+    Shr,
+    shr,
+    ShrAssign,
+    shr_assign,
+    shr_with_overflow,
+    "attempt to shift-right with overflow"
+);
+
+bignum_arith_impls!(
+    u32,
+    no_rhs_ref,
+    Shl,
+    shl,
+    ShlAssign,
+    shl_assign,
+    shl_with_overflow,
+    "attempt to shift-left with overflow"
+);
+
+bignum_arith_impls!(
+    Bignum<LIMBS>,
+    allow_rhs_ref,
+    BitAnd,
+    bitand,
+    BitAndAssign,
+    bitand_assign,
+    bitwise_and,
+    no_overflow
+);
+
+bignum_arith_impls!(
+    Bignum<LIMBS>,
+    allow_rhs_ref,
+    BitOr,
+    bitor,
+    BitOrAssign,
+    bitor_assign,
+    bitwise_or,
+    no_overflow
+);
+
+bignum_arith_impls!(
+    Bignum<LIMBS>,
+    allow_rhs_ref,
+    BitXor,
+    bitxor,
+    BitXorAssign,
+    bitxor_assign,
+    bitwise_xor,
+    no_overflow
+);
+
+bignum_arith_impls!(
+    Bignum<LIMBS>,
+    allow_rhs_ref,
+    Rem,
+    rem,
+    RemAssign,
+    rem_assign,
+    remainder,
+    no_overflow
+);
+
+bignum_arith_impls!(
+    Bignum<LIMBS>,
+    allow_rhs_ref,
+    Div,
+    div,
+    DivAssign,
+    div_assign,
+    quotient,
+    no_overflow
+);
 
 #[cfg(test)]
 mod tests {
@@ -886,26 +1074,26 @@ mod tests {
     fn test_divmod_bignums() {
         let a: Bignum<10> = 5u8.into();
         let b: Bignum<10> = 6u8.into();
-        assert_eq!(a.divmod(b), (0u8.into(), a));
+        assert_eq!(a.divmod(&b), (0u8.into(), a));
 
         let a: Bignum<10> = 1234u16.into();
         let b: Bignum<10> = 56u8.into();
-        assert_eq!(a.divmod(b), (22u8.into(), 2u8.into()));
+        assert_eq!(a.divmod(&b), (22u8.into(), 2u8.into()));
 
         let a: Bignum<10> = 12345_u32.into();
         let b: Bignum<10> = 10u8.into();
-        assert_eq!(a.divmod(b), (1234u16.into(), 5u8.into()));
+        assert_eq!(a.divmod(&b), (1234u16.into(), 5u8.into()));
 
         let a: Bignum<10> = u64::MAX.into();
         let b: Bignum<10> = u64::MAX.into();
-        assert_eq!(a.divmod(b), (1u8.into(), Bignum::ZERO));
+        assert_eq!(a.divmod(&b), (1u8.into(), Bignum::ZERO));
 
         let a: Bignum<10> = Bignum {
             limbs: [u64::MAX, u64::MAX, 0, 0, 0, 0, 0, 0, 0, 0],
         };
         let b: Bignum<10> = u64::MAX.into();
         assert_eq!(
-            a.divmod(b),
+            a.divmod(&b),
             (
                 Bignum {
                     limbs: [1, 1, 0, 0, 0, 0, 0, 0, 0, 0],
@@ -916,7 +1104,7 @@ mod tests {
 
         let a: Bignum<10> = Bignum::MAX;
         let b: Bignum<10> = u64::MAX.into();
-        assert_eq!(a.divmod(b), (Bignum { limbs: [1; 10] }, Bignum::ZERO));
+        assert_eq!(a.divmod(&b), (Bignum { limbs: [1; 10] }, Bignum::ZERO));
     }
 
     #[test]
@@ -1175,77 +1363,79 @@ mod tests {
 
     #[test]
     fn test_modexp_bignums() {
-        let a: Bignum<10> = 5u8.into();
-        let b: Bignum<10> = 6u8.into();
-        let p = 7u8.into();
-        assert_eq!(a.modexp(b, p), 1u8.into());
+        for _ in 0..1000 {
+            let a: Bignum<10> = 5u8.into();
+            let b: Bignum<10> = 6u8.into();
+            let p = 7u8.into();
+            assert_eq!(a.modexp(b, p), 1u8.into());
 
-        let a: Bignum<10> = 1234u16.into();
-        let b: Bignum<10> = 56u8.into();
-        let p = 63097u16.into();
-        assert_eq!(a.modexp(b, p), 19484u16.into());
+            let a: Bignum<10> = 1234u16.into();
+            let b: Bignum<10> = 56u8.into();
+            let p = 63097u16.into();
+            assert_eq!(a.modexp(b, p), 19484u16.into());
 
-        let a = Bignum {
-            limbs: [
-                0xb4830d2b3cc4b4bb,
-                0x4d847515b57d26be,
-                0xf140fe29591db8b1,
-                0xbfc2c416d5e95510,
-                0xc1c04b03907d23ff,
-                0x0,
-                0x0,
-                0x0,
-                0x0,
-                0x0,
-            ],
-        };
-        let b = Bignum {
-            limbs: [
-                0xe8772512ce1f7b9f,
-                0x451aa7d52bf5c78d,
-                0x642d57d46c59d77f,
-                0x2837cdd88dda035,
-                0x14051e1547177b5c,
-                0x0,
-                0x0,
-                0x0,
-                0x0,
-                0x0,
-            ],
-        };
-        let p = Bignum {
-            limbs: [
-                0x603cefe390418a2b,
-                0xed8ee51b4a3b8ee2,
-                0x2ec9a9dc5c9d8cfc,
-                0x216145bd7def3632,
-                0xfd26188815dbff75,
-                0x0,
-                0x0,
-                0x0,
-                0x0,
-                0x0,
-            ],
-        };
-
-        assert_eq!(a.modexp(Bignum::ZERO, p), Bignum::ONE);
-        assert_eq!(
-            a.modexp(b, p),
-            Bignum {
+            let a = Bignum {
                 limbs: [
-                    0x9b8e80cf15097ec8,
-                    0xb65ab0282cdd9221,
-                    0x2336422285e470fd,
-                    0xc23f88da48ef28c5,
-                    0x924f5dadc7c825ac,
+                    0xb4830d2b3cc4b4bb,
+                    0x4d847515b57d26be,
+                    0xf140fe29591db8b1,
+                    0xbfc2c416d5e95510,
+                    0xc1c04b03907d23ff,
                     0x0,
                     0x0,
                     0x0,
                     0x0,
                     0x0,
                 ],
-            }
-        );
+            };
+            let b = Bignum {
+                limbs: [
+                    0xe8772512ce1f7b9f,
+                    0x451aa7d52bf5c78d,
+                    0x642d57d46c59d77f,
+                    0x2837cdd88dda035,
+                    0x14051e1547177b5c,
+                    0x0,
+                    0x0,
+                    0x0,
+                    0x0,
+                    0x0,
+                ],
+            };
+            let p = Bignum {
+                limbs: [
+                    0x603cefe390418a2b,
+                    0xed8ee51b4a3b8ee2,
+                    0x2ec9a9dc5c9d8cfc,
+                    0x216145bd7def3632,
+                    0xfd26188815dbff75,
+                    0x0,
+                    0x0,
+                    0x0,
+                    0x0,
+                    0x0,
+                ],
+            };
+
+            assert_eq!(a.modexp(Bignum::ZERO, p), Bignum::ONE);
+            assert_eq!(
+                a.modexp(b, p),
+                Bignum {
+                    limbs: [
+                        0x9b8e80cf15097ec8,
+                        0xb65ab0282cdd9221,
+                        0x2336422285e470fd,
+                        0xc23f88da48ef28c5,
+                        0x924f5dadc7c825ac,
+                        0x0,
+                        0x0,
+                        0x0,
+                        0x0,
+                        0x0,
+                    ],
+                }
+            );
+        }
     }
 
     #[test]
@@ -1906,5 +2096,48 @@ mod tests {
                 assert!(!a.test_bit(i));
             }
         }
+    }
+
+    #[test]
+    fn test_bezouts_coeffs_bignums() {
+        const SHORT_NIST_P: Bignum<26> = Bignum {
+            limbs: [
+                0xffffffffffffffff,
+                0xf1746c08ca237327,
+                0x670c354e4abc9804,
+                0x9ed529077096966d,
+                0x1c62f356208552bb,
+                0x83655d23dca3ad96,
+                0x69163fa8fd24cf5f,
+                0x98da48361c55d39a,
+                0xc2007cb8a163bf05,
+                0x49286651ece45b3d,
+                0xae9f24117c4b1fe6,
+                0xee386bfb5a899fa5,
+                0xbff5cb6f406b7ed,
+                0xf44c42e9a637ed6b,
+                0xe485b576625e7ec6,
+                0x4fe1356d6d51c245,
+                0x302b0a6df25f1437,
+                0xef9519b3cd3a431b,
+                0x514a08798e3404dd,
+                0x20bbea63b139b22,
+                0x29024e088a67cc74,
+                0xc4c6628b80dc1cd1,
+                0xc90fdaa22168c234,
+                0xffffffffffffffff,
+                0,
+                0,
+            ],
+        };
+
+        const N: Bignum<26> = Bignum {
+            limbs: [
+                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0,
+            ],
+        };
+
+        dbg!(Bignum::bezouts_coeffs(&SHORT_NIST_P, &N));
+        panic!()
     }
 }
