@@ -9,7 +9,7 @@ use std::fmt;
 use std::num::ParseIntError;
 use std::ops::{
     Add, AddAssign, BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Div, DivAssign,
-    Mul, MulAssign, Not, Rem, RemAssign, Shl, ShlAssign, Shr, ShrAssign, Sub, SubAssign,
+    Mul, MulAssign, Neg, Not, Rem, RemAssign, Shl, ShlAssign, Shr, ShrAssign, Sub, SubAssign,
 };
 use std::str::FromStr;
 
@@ -298,6 +298,15 @@ impl<const LIMBS: usize> Bignum<LIMBS> {
         carry
     }
 
+    fn negate(&mut self) {
+        let mut carry = true;
+        for l in self.limbs.iter_mut() {
+            let (sum, overflow) = carrying_add(!*l, 0, carry);
+            *l = sum;
+            carry = overflow;
+        }
+    }
+
     fn mul_with_overflow(&mut self, rhs: &Self) -> bool {
         let mut out = Self::ZERO.clone();
         let mut overflow = false;
@@ -525,6 +534,23 @@ impl<const LIMBS: usize> Ord for Bignum<LIMBS> {
             .map(|(a, b)| a.cmp(b))
             .find(|ordering| *ordering != Ordering::Equal)
             .unwrap_or(Ordering::Equal)
+    }
+}
+
+impl<const LIMBS: usize> Neg for Bignum<LIMBS> {
+    type Output = Self;
+    fn neg(mut self) -> Self::Output {
+        self.negate();
+        self
+    }
+}
+
+impl<const LIMBS: usize> Neg for &Bignum<LIMBS> {
+    type Output = Bignum<LIMBS>;
+    fn neg(self) -> Self::Output {
+        let mut out = self.clone();
+        out.negate();
+        out
     }
 }
 
@@ -945,6 +971,32 @@ mod tests {
         };
         a -= b;
         assert_eq!(a, c);
+    }
+
+    #[test]
+    fn test_neg_bignums() {
+        assert_eq!(-Bignum::<10>::ZERO, Bignum::<10>::ZERO);
+        assert_eq!(-Bignum::<10>::MAX, Bignum::<10>::ONE);
+        assert_eq!(-Bignum::<10>::ONE, Bignum::<10>::MAX);
+
+        let a: Bignum<10> = Bignum {
+            limbs: [0, 1, 0, 0, 0, 0, 0, 0, 0, 0],
+        };
+        let b: Bignum<10> = Bignum {
+            limbs: [
+                0,
+                u64::MAX,
+                u64::MAX,
+                u64::MAX,
+                u64::MAX,
+                u64::MAX,
+                u64::MAX,
+                u64::MAX,
+                u64::MAX,
+                u64::MAX,
+            ],
+        };
+        assert_eq!(-a, b);
     }
 
     #[test]
@@ -2100,7 +2152,7 @@ mod tests {
 
     #[test]
     fn test_bezouts_coeffs_bignums() {
-        const SHORT_NIST_P: Bignum<26> = Bignum {
+        const N: Bignum<26> = Bignum {
             limbs: [
                 0xffffffffffffffff,
                 0xf1746c08ca237327,
@@ -2131,13 +2183,20 @@ mod tests {
             ],
         };
 
-        const N: Bignum<26> = Bignum {
+        const R: Bignum<26> = Bignum {
             limbs: [
-                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0,
+                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0,
             ],
         };
 
-        dbg!(Bignum::bezouts_coeffs(&SHORT_NIST_P, &N));
+        eprintln!("r = {R}");
+        eprintln!("n = {N}");
+        let (r_prime, n_prime) = Bignum::bezouts_coeffs(&R, &N);
+        eprintln!("r_prime = {r_prime}");
+        eprintln!("n_prime = {n_prime}");
+
+        eprintln!("{}", Bignum::<5>::ZERO - Bignum::<5>::ONE);
+
         panic!()
     }
 }
