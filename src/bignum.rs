@@ -13,7 +13,7 @@ use std::ops::{
 };
 use std::str::FromStr;
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub struct Bignum<const LIMBS: usize> {
     limbs: [u64; LIMBS],
 }
@@ -391,6 +391,47 @@ impl<const LIMBS: usize> Bignum<LIMBS> {
         false
     }
 
+    fn arithmetic_shr_with_overflow(&mut self, rhs: u32) -> bool {
+        if rhs as usize > LIMBS * 64 {
+            *self = Self::ZERO;
+            return true;
+        }
+
+        // first determine the fill limb
+        let fill_limb = if (self.limbs[LIMBS - 1] >> 63) == 0 {
+            u64::MIN
+        } else {
+            u64::MAX
+        };
+
+        // we have 64 * LIMBS total bits
+        // a shift of N bits moves the top 64 * LIMBS - N bits to the lowest bits
+        // meaning the lowest eventual limb is
+        let bottom_limb = rhs as usize / 64;
+        let limb_split_pos = rhs % 64;
+
+        // we can optimise for word aligned shifts
+        if limb_split_pos == 0 {
+            self.limbs.copy_within(bottom_limb..LIMBS, 0)
+        } else {
+            for i in 0..(LIMBS - bottom_limb - 1) {
+                let upper = self.limbs[bottom_limb + i + 1] << (64 - limb_split_pos);
+                let lower = self.limbs[bottom_limb + i] >> limb_split_pos;
+                self.limbs[i] = upper | lower;
+            }
+
+            let upper = fill_limb << (64 - limb_split_pos);
+            let lower = self.limbs[LIMBS - 1] >> limb_split_pos;
+            self.limbs[LIMBS - bottom_limb - 1] = upper | lower;
+        }
+
+        for i in 0..bottom_limb {
+            self.limbs[LIMBS - i - 1] = fill_limb;
+        }
+
+        false
+    }
+
     fn bitwise_and(&mut self, rhs: &Self) {
         for (o, i) in self.limbs.iter_mut().zip(rhs.limbs.iter()) {
             *o &= *i;
@@ -417,30 +458,121 @@ impl<const LIMBS: usize> Bignum<LIMBS> {
         *self = self.divmod(rhs).1;
     }
 
+    fn is_even(&self) -> bool {
+        self.limbs[0] & 1 == 0
+    }
+
+    fn is_odd(&self) -> bool {
+        !self.is_even()
+    }
+
+    fn is_negative(&self) -> bool {
+        (self.limbs[LIMBS - 1] >> 63) == 1
+    }
+
+    fn widen<const OUT_LIMBS: usize>(&self) -> Bignum<OUT_LIMBS> {
+        let mut out: Bignum<OUT_LIMBS> = Bignum::ZERO;
+        out.limbs[..LIMBS].copy_from_slice(&self.limbs);
+        out
+    }
+
+    fn narrow<const OUT_LIMBS: usize>(&self) -> Bignum<OUT_LIMBS> {
+        let mut out: Bignum<OUT_LIMBS> = Bignum::ZERO;
+        out.limbs.copy_from_slice(&self.limbs[..OUT_LIMBS]);
+        out
+    }
+
+    fn split<const LEFT_LIMBS: usize, const RIGHT_LIMBS: usize>(
+        &self,
+    ) -> (Bignum<LEFT_LIMBS>, Bignum<RIGHT_LIMBS>) {
+        let mut left: Bignum<LEFT_LIMBS> = Bignum::ZERO;
+        let mut right: Bignum<RIGHT_LIMBS> = Bignum::ZERO;
+        left.limbs.copy_from_slice(&self.limbs[..LEFT_LIMBS]);
+        right.limbs.copy_from_slice(&self.limbs[LEFT_LIMBS..]);
+        (left, right)
+    }
+
+    #[allow(non_snake_case)]
+    fn xgcd(x: &Self, y: &Self) -> (Self, Self, Self) {
+        debug_assert!(x.is_odd() || y.is_odd());
+
+        let mut u = *x;
+        let mut v = *y;
+        let mut A = Self::ONE;
+        let mut B = Self::ZERO;
+        let mut C = Self::ZERO;
+        let mut D = Self::ONE;
+
+        while !u.is_zero() {
+            while u.is_even() {
+                u >>= 1;
+
+                if A.is_odd() || B.is_odd() {
+                    A.add_with_overflow(y);
+                    B.sub_with_overflow(x);
+                }
+
+                A.arithmetic_shr_with_overflow(1);
+                B.arithmetic_shr_with_overflow(1);
+            }
+
+            while v.is_even() {
+                v >>= 1;
+
+                if C.is_odd() || D.is_odd() {
+                    C.add_with_overflow(y);
+                    D.sub_with_overflow(x);
+                }
+
+                C.arithmetic_shr_with_overflow(1);
+                D.arithmetic_shr_with_overflow(1);
+            }
+
+            if u >= v {
+                u -= &v;
+                A.sub_with_overflow(&C);
+                B.sub_with_overflow(&D);
+            } else {
+                v -= &u;
+                C.sub_with_overflow(&A);
+                D.sub_with_overflow(&B);
+            }
+        }
+
+        (C, D, v)
+    }
+
     fn bezouts_coeffs(a: &Self, b: &Self) -> (Self, Self) {
         let (mut s, mut old_s) = (Self::ZERO, Self::ONE);
         let (mut r, mut old_r) = (b.clone(), a.clone());
 
-        let mut tmp;
         while !r.is_zero() {
-            let quotient = old_r / r;
+            let mut suband = old_r;
+            suband.div_assign(&r);
+            suband.mul_assign(&r);
 
-            tmp = old_r;
-            old_r = r;
-            r = tmp - quotient * r;
+            old_r.sub_with_overflow(&suband);
+            std::mem::swap(&mut r, &mut old_r);
             // (old_r, r) = (r, old_r - quotient * r);
 
-            tmp = old_s;
-            old_s = s;
-            s = tmp - quotient * s;
+            old_s.sub_with_overflow(&suband);
+            std::mem::swap(&mut s, &mut old_s);
             // (old_s, s) = (s, old_s - quotient * s);
         }
 
-        let bezout_t = if b.is_zero() {
-            Self::ZERO
-        } else {
-            old_r - old_s * a
+        let mut bezout_t = Self::ZERO;
+
+        if !b.is_zero() {
+            eprintln!("{old_r} - {old_s} * {a}");
+            let mut suband = old_s;
+            suband.mul_assign(a);
+            bezout_t.sub_with_overflow(&suband);
         };
+
+        eprintln!("s = {s}");
+        eprintln!("old_s = {old_s}");
+        eprintln!("r = {r}");
+        eprintln!("old_r = {old_r}");
 
         (old_s, bezout_t)
     }
@@ -483,8 +615,15 @@ impl<const LIMBS: usize> fmt::Display for Bignum<LIMBS> {
             return write!(f, "0x0");
         }
 
+        let num = if f.alternate() && self.is_negative() {
+            write!(f, "-")?;
+            -self
+        } else {
+            *self
+        };
+
         let mut first = true;
-        for limb in self.limbs.iter().rev() {
+        for limb in num.limbs.iter().rev() {
             if first && *limb != 0 {
                 write!(f, "0x{limb:x}")?;
                 first = false;
@@ -492,6 +631,7 @@ impl<const LIMBS: usize> fmt::Display for Bignum<LIMBS> {
                 write!(f, "{limb:016x}")?;
             }
         }
+
         Ok(())
     }
 }
@@ -500,10 +640,12 @@ impl<const LIMBS: usize> FromStr for Bignum<LIMBS> {
     type Err = ParseIntError;
 
     fn from_str(mut s: &str) -> Result<Self, Self::Err> {
+        let negate = s.starts_with('-');
+        s = s.strip_prefix('-').unwrap_or(s);
         s = s.strip_prefix("0x").unwrap_or(s);
         let offset = if s.starts_with("0x") { 2 } else { 0 };
         let bytes = &s.as_bytes()[offset..];
-        if bytes.len() > LIMBS * 16 || s.starts_with('-') {
+        if bytes.len() > LIMBS * 16 {
             return Err(u8::from_str("-1").unwrap_err());
         }
 
@@ -513,6 +655,10 @@ impl<const LIMBS: usize> FromStr for Bignum<LIMBS> {
                 std::str::from_utf8(chunk).expect("MMH WHY IS THERE UNICODE IN YOUR NUMBER BOI"),
                 16,
             )?;
+        }
+
+        if negate {
+            out.negate();
         }
 
         Ok(out)
@@ -830,7 +976,7 @@ bignum_arith_impls!(
 
 #[cfg(test)]
 mod tests {
-    use crate::bignum::Bignum;
+    use crate::bignum::{nist_consts, Bignum};
 
     #[test]
     fn test_display_bignums() {
@@ -1612,6 +1758,69 @@ mod tests {
     }
 
     #[test]
+    fn test_arithmetic_shr_with_overflow_bignums() {
+        let mut a: Bignum<10> = u64::MAX.into();
+        a.arithmetic_shr_with_overflow(30);
+        assert_eq!(a, (u64::MAX >> 30).into());
+
+        let mut a: Bignum<10> = Bignum {
+            limbs: [0, 1, 0, 0, 0, 0, 0, 0, 0, 0],
+        };
+        a.arithmetic_shr_with_overflow(1);
+        assert_eq!(a, (1_u64 << 63).into());
+
+        let mut a: Bignum<10> = Bignum {
+            limbs: [0, 1, 0, 0, 0, 0, 0, 0, 0, 0],
+        };
+        a.arithmetic_shr_with_overflow(64);
+        assert_eq!(a, 1u8.into());
+
+        let mut a = Bignum {
+            limbs: [0, u64::MAX, u64::MAX, 0, 0, 0, 0, 0b1000_0000, 0, u64::MAX],
+        };
+        a.arithmetic_shr_with_overflow(7);
+        assert_eq!(
+            a,
+            Bignum {
+                limbs: [
+                    u64::MAX << (64 - 7),
+                    u64::MAX,
+                    u64::MAX >> 7,
+                    0,
+                    0,
+                    0,
+                    0,
+                    1,
+                    u64::MAX << (64 - 7),
+                    u64::MAX
+                ],
+            }
+        );
+
+        let mut a = Bignum {
+            limbs: [0, u64::MAX, u64::MAX, 0, 0, 0, 0, 0b1000_0000, 0, u64::MAX],
+        };
+        a.arithmetic_shr_with_overflow(135);
+        assert_eq!(
+            a,
+            Bignum {
+                limbs: [
+                    u64::MAX >> 7,
+                    0,
+                    0,
+                    0,
+                    0,
+                    1,
+                    u64::MAX << (64 - 7),
+                    u64::MAX,
+                    u64::MAX,
+                    u64::MAX,
+                ],
+            }
+        );
+    }
+
+    #[test]
     fn test_shl_bignums() {
         let a: Bignum<10> = 1_u8.into();
         assert_eq!(a << 30, (1_u32 << 30).into());
@@ -2151,51 +2360,43 @@ mod tests {
     }
 
     #[test]
+    fn test_xgcd_bignums() {
+        let n: Bignum<1> = "2b5".parse().unwrap();
+        let r: Bignum<1> = "261".parse().unwrap();
+
+        let (a, b, c) = Bignum::xgcd(&n, &r);
+        assert_eq!(a, "-0xb5".parse().unwrap());
+        assert_eq!(b, "0xce".parse().unwrap());
+        assert_eq!(c, "0x15".parse().unwrap());
+
+        let (a, b, c) = Bignum::xgcd(&r, &n);
+        assert_eq!(a, "0xad".parse().unwrap());
+        assert_eq!(b, "-0x98".parse().unwrap());
+        assert_eq!(c, "0x15".parse().unwrap());
+
+        let n: Bignum<26> = nist_consts::NIST_P.narrow();
+        let r: Bignum<26> = Bignum::ONE << (24 * 64);
+        let (a, b, c) = Bignum::xgcd(&r, &n);
+        let a_true = "-0x2638276a12a55f53531790ef47ce2e065b6f8712eb2d4f945df25586114ea80ecb08ea78700f164701481a6ae936a66a760400cbe6523679e06a9f680d52428d3366bae6482534ba96d0a70880a249bc2e8c290779d16ed8e0add541dfc16d056da59bad2334090406f13c6a5af801c7680d84d576d3284792f94170bd15c35b230357d18d13ce51f1a9a948e882aed32aea6378ad8a3ab01d7e2bc45f87ede0ee9f341b39ebf102764140e1890a654da0a71c73887936ee5fb339532a224c26".parse().unwrap();
+        let b_true = "0x2638276a12a55f535b4b4378bc8277ecf031263370ec7b7e0acdd4a302f48428dda8ce2446d179b3545d8b4497fb2bb0cdb94451bb92042084d355d080045cd25c77faf2432a1a533486195a5af0c129fe1dc78404679e96fe55bd1332ca3aecf2b229f4cf6cb52b844eed051e87ef3598913c33bf4956fa8ba10dfa570f6f77a011b71e04f5519d306216b0b2d0a6ab80d150971817dc5cdedea9ea69cef646e50da4c795c3bc85c1b6e18de48671bb0e8b93f735dc8cd7ffffffffffffffff".parse().unwrap();
+        assert_eq!(a, a_true);
+        assert_eq!(b, b_true);
+        assert!(c.is_one());
+    }
+
+    #[test]
     fn test_bezouts_coeffs_bignums() {
-        const N: Bignum<26> = Bignum {
-            limbs: [
-                0xffffffffffffffff,
-                0xf1746c08ca237327,
-                0x670c354e4abc9804,
-                0x9ed529077096966d,
-                0x1c62f356208552bb,
-                0x83655d23dca3ad96,
-                0x69163fa8fd24cf5f,
-                0x98da48361c55d39a,
-                0xc2007cb8a163bf05,
-                0x49286651ece45b3d,
-                0xae9f24117c4b1fe6,
-                0xee386bfb5a899fa5,
-                0xbff5cb6f406b7ed,
-                0xf44c42e9a637ed6b,
-                0xe485b576625e7ec6,
-                0x4fe1356d6d51c245,
-                0x302b0a6df25f1437,
-                0xef9519b3cd3a431b,
-                0x514a08798e3404dd,
-                0x20bbea63b139b22,
-                0x29024e088a67cc74,
-                0xc4c6628b80dc1cd1,
-                0xc90fdaa22168c234,
-                0xffffffffffffffff,
-                0,
-                0,
-            ],
-        };
+        let N: Bignum<48> = nist_consts::NIST_P;
+        let R: Bignum<48> = Bignum::ONE << (24 * 64);
+        let n: Bignum<48> = N.narrow();
+        let r: Bignum<48> = R.narrow();
 
-        const R: Bignum<26> = Bignum {
-            limbs: [
-                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0,
-            ],
-        };
-
-        eprintln!("r = {R}");
-        eprintln!("n = {N}");
-        let (r_prime, n_prime) = Bignum::bezouts_coeffs(&R, &N);
+        eprintln!("r = {r}");
+        eprintln!("n = {n}");
+        let (r_prime, n_prime) = Bignum::bezouts_coeffs(&r, &n);
         eprintln!("r_prime = {r_prime}");
         eprintln!("n_prime = {n_prime}");
-
-        eprintln!("{}", Bignum::<5>::ZERO - Bignum::<5>::ONE);
+        eprintln!("n_prime = {}", -n_prime);
 
         panic!()
     }
