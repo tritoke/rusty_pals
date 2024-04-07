@@ -1,6 +1,6 @@
 #![allow(non_snake_case)]
 
-use rusty_pals::bignum::nist_consts::{NIST_G, NIST_P};
+use rusty_pals::bignum::nist::{NIST_G, NIST_P};
 use rusty_pals::bignum::Bignum;
 use rusty_pals::rand::{Rng32, XorShift32};
 // a bigint type big enough to handle modexp for NIST's p value
