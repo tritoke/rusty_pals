@@ -1,6 +1,6 @@
 use super::Bignum;
 
-pub const NIST_P: Bignum<48> = Bignum {
+pub const NIST_P: Bignum<24> = Bignum {
     limbs: [
         0xffffffffffffffff,
         0xf1746c08ca237327,
@@ -26,35 +26,11 @@ pub const NIST_P: Bignum<48> = Bignum {
         0xc4c6628b80dc1cd1,
         0xc90fdaa22168c234,
         0xffffffffffffffff,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
     ],
 };
 
-pub const NIST_G: Bignum<48> = {
-    let mut limbs = [0u64; 48];
+pub const NIST_G: Bignum<24> = {
+    let mut limbs = [0u64; 24];
     limbs[0] = 2;
     Bignum { limbs }
 };

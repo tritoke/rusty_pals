@@ -8,21 +8,21 @@ use crate::bignum::Bignum;
 
 // we dont have nightly but i can steal from nightly >:)
 #[inline]
-const fn carrying_add(x: u64, y: u64, carry: bool) -> (u64, bool) {
+pub(super) const fn carrying_add(x: u64, y: u64, carry: bool) -> (u64, bool) {
     let (a, b) = x.overflowing_add(y);
     let (c, d) = a.overflowing_add(carry as u64);
     (c, b != d)
 }
 
 #[inline]
-const fn borrowing_sub(x: u64, y: u64, carry: bool) -> (u64, bool) {
+pub(super) const fn borrowing_sub(x: u64, y: u64, carry: bool) -> (u64, bool) {
     let (a, b) = x.overflowing_sub(y);
     let (c, d) = a.overflowing_sub(carry as u64);
     (c, b != d)
 }
 
 #[inline]
-const fn carrying_mul(x: u64, y: u64, carry: u64) -> (u64, u64) {
+pub(super) const fn carrying_mul(x: u64, y: u64, carry: u64) -> (u64, u64) {
     // unchecked is nightly so checked it is
     let wide = x as u128 * y as u128 + carry as u128;
     (wide as u64, (wide >> 64) as u64)
@@ -76,6 +76,38 @@ impl<const LIMBS: usize> Bignum<LIMBS> {
 
         *self = out;
         overflow
+    }
+
+    pub(super) fn mul_with_limb(&self, rhs: u64) -> (Self, u64) {
+        let mut out = Self::ZERO;
+
+        let mut carry = 0;
+        for (l, o) in self.limbs.iter().zip(out.limbs.iter_mut()) {
+            let (prod, next_carry) = carrying_mul(rhs, *l, carry);
+            let (new_limb, add_carry) = o.overflowing_add(prod);
+            carry = next_carry + u64::from(add_carry);
+            *o = new_limb;
+        }
+
+        (out, carry)
+    }
+
+    pub(super) fn mul_wide(&self, rhs: &Self) -> (Self, Self) {
+        let mut lower = Self::ZERO;
+        let mut upper = Self::ZERO;
+
+        for (i, r) in rhs.limbs.iter().enumerate() {
+            let mut carry = 0;
+            let out_limbs = lower.limbs.iter_mut().chain(upper.limbs.iter_mut()).skip(i);
+            for (l, o) in self.limbs.iter().zip(out_limbs) {
+                let (prod, next_carry) = carrying_mul(*r, *l, carry);
+                let (new_limb, add_carry) = o.overflowing_add(prod);
+                carry = next_carry + u64::from(add_carry);
+                *o = new_limb;
+            }
+        }
+
+        (lower, upper)
     }
 
     pub(super) fn shr_with_overflow(&mut self, rhs: u32) -> bool {
