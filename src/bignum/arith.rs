@@ -116,6 +116,10 @@ impl<const LIMBS: usize> Bignum<LIMBS> {
             return true;
         }
 
+        if rhs == 0 {
+            return false;
+        }
+
         // we have 64 * LIMBS total bits
         // a shift of N bits moves the top 64 * LIMBS - N bits to the lowest bits
         // meaning the lowest eventual limb is
@@ -146,6 +150,10 @@ impl<const LIMBS: usize> Bignum<LIMBS> {
         if rhs as usize >= LIMBS * 64 {
             *self = Self::ZERO;
             return true;
+        }
+
+        if rhs == 0 {
+            return false;
         }
 
         // we have 64 * LIMBS total bits

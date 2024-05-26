@@ -51,83 +51,104 @@ impl<const LIMBS: usize> WideBignum<LIMBS> {
     }
 
     fn shl_with_overflow(&mut self, rhs: u32) -> bool {
-        if rhs as usize >= LIMBS * 64 {
+        if rhs as usize >= LIMBS * 2 * 64 {
             *self = Self::ZERO;
             return true;
         }
 
-        // we have 64 * LIMBS total bits
-        // a shift of N bits moves the top 64 * LIMBS - N bits to the lowest bits
-        // meaning the lowest eventual limb is
-        let bottom_limb = rhs as usize / 64;
-        let limb_split_pos = rhs % 64;
+        if rhs == 0 {
+            return false;
+        }
 
-        // we can optimise for word aligned shifts
-        if limb_split_pos == 0 {
-            // split into three copies
-            // within self.hi
-            self.hi
-                .limbs
-                .copy_within(0..LIMBS - bottom_limb, bottom_limb);
-            // between self.lo and self.hi
-            self.hi
-                .limbs
-                [LIMBS-bottom_limb..]
-               .copy_from_slice(src)
-            // within self.lo
-            self.lo
-                .limbs
-                .copy_within(0..LIMBS - bottom_limb, bottom_limb);
+        let mut lo = self.lo;
+        let hi = if dbg!(lo.shl_with_overflow(rhs)) {
+            self.lo << (rhs - (LIMBS as u32 * 64))
         } else {
-            for i in (bottom_limb + 1..LIMBS).rev() {
-                let upper = self.limbs[i - bottom_limb] << limb_split_pos;
-                let lower = self.limbs[i - bottom_limb - 1] >> (64 - limb_split_pos);
-                self.limbs[i] = upper | lower;
-            }
+            (self.hi << rhs) | (self.lo >> (LIMBS as u32 * 64 - rhs))
+        };
 
-            self.limbs[bottom_limb] = self.limbs[0] << limb_split_pos;
-        }
-
-        for i in 0..bottom_limb {
-            self.limbs[i] = 0;
-        }
+        *self = WideBignum { hi, lo };
 
         false
     }
 
-    fn remainder(self, modulus: &Bignum<LIMBS>) -> Bignum<LIMBS> {
-        debug_assert!(!modulus.is_zero(), "attempt to divide by zero");
+    // fn remainder(self, modulus: &Bignum<LIMBS>) -> Bignum<LIMBS> {
+    //     debug_assert!(!modulus.is_zero(), "attempt to divide by zero");
 
-        // early exit for simple cases - CT is hard lmao
-        if modulus.is_one() {
-            return Bignum::ZERO;
+    //     // early exit for simple cases - CT is hard lmao
+    //     if modulus.is_one() {
+    //         return Bignum::ZERO;
+    //     }
+
+    //     if &self < modulus {
+    //         return self.lo;
+    //     }
+
+    //     let mut dividend = self;
+    //     let mut divisor = WideBignum::new(Bignum::ZERO, *modulus);
+
+    //     // normalise divisor
+    //     let normalising_shift = divisor.leading_zeros() - dividend.leading_zeros();
+    //     divisor <<= normalising_shift;
+    //     debug_assert_eq!(dividend.leading_zeros(), divisor.leading_zeros());
+
+    //     // initialize quotient and remainder
+    //     let mut quotient = Bignum::ZERO;
+
+    //     // perform the division
+    //     while &dividend >= modulus {
+    //         quotient <<= 1;
+    //         if dividend >= divisor {
+    //             dividend -= divisor;
+    //             quotient |= Bignum::ONE;
+    //         }
+    //         divisor >>= 1;
+    //     }
+
+    //     dividend
+    // }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_shl_wide_bignums() {
+        const LIMBS: usize = 10;
+
+        for i in 0..2 * LIMBS as u32 {
+            let lo: Bignum<LIMBS> = Bignum::MAX;
+            let hi: Bignum<LIMBS> = Bignum::ZERO;
+            let mut wide = WideBignum { hi, lo };
+
+            assert!(!wide.shl_with_overflow(i * 64));
+
+            let correct = if i < LIMBS as u32 {
+                WideBignum {
+                    hi: if i == 0 {
+                        Bignum::ZERO
+                    } else {
+                        Bignum::MAX >> ((LIMBS as u32 - i) * 64)
+                    },
+                    lo: if i == 0 {
+                        Bignum::MAX
+                    } else {
+                        Bignum::MAX << (i * 64)
+                    },
+                }
+            } else {
+                WideBignum {
+                    hi: if i == LIMBS as u32 * 64 {
+                        Bignum::MAX
+                    } else {
+                        Bignum::MAX << ((i - LIMBS as u32) * 64)
+                    },
+                    lo: Bignum::ZERO,
+                }
+            };
+
+            assert_eq!(correct, wide);
         }
-
-        if &self < modulus {
-            return self.lo;
-        }
-
-        let mut dividend = self;
-        let mut divisor = WideBignum::new(Bignum::ZERO, *modulus);
-
-        // normalise divisor
-        let normalising_shift = divisor.leading_zeros() - dividend.leading_zeros();
-        divisor <<= normalising_shift;
-        debug_assert_eq!(dividend.leading_zeros(), divisor.leading_zeros());
-
-        // initialize quotient and remainder
-        let mut quotient = Bignum::ZERO;
-
-        // perform the division
-        while &dividend >= modulus {
-            quotient <<= 1;
-            if dividend >= divisor {
-                dividend -= divisor;
-                quotient |= Bignum::ONE;
-            }
-            divisor >>= 1;
-        }
-
-        dividend
     }
 }
