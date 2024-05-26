@@ -9,6 +9,7 @@ use std::str::FromStr;
 
 mod arith;
 mod monty;
+mod wide;
 
 pub mod nist;
 
