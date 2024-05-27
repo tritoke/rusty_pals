@@ -61,13 +61,35 @@ impl<const LIMBS: usize> WideBignum<LIMBS> {
         }
 
         let mut lo = self.lo;
-        let hi = if dbg!(lo.shl_with_overflow(rhs)) {
+        let hi = if lo.shl_with_overflow(rhs) {
             self.lo << (rhs - (LIMBS as u32 * 64))
         } else {
             (self.hi << rhs) | (self.lo >> (LIMBS as u32 * 64 - rhs))
         };
 
         *self = WideBignum { hi, lo };
+
+        false
+    }
+
+    fn shr_with_overflow(&mut self, rhs: u32) -> bool {
+        if rhs as usize >= LIMBS * 2 * 64 {
+            *self = Self::ZERO;
+            return true;
+        }
+
+        if rhs == 0 {
+            return false;
+        }
+
+        let mut hi = self.hi;
+        let lo = if hi.shr_with_overflow(rhs) {
+            self.hi >> (rhs - (LIMBS as u32 * 64))
+        } else {
+            (self.lo >> rhs) | (self.hi << (LIMBS as u32 * 64 - rhs))
+        };
+
+        *self = WideBignum { lo, hi };
 
         false
     }
@@ -89,7 +111,7 @@ impl<const LIMBS: usize> WideBignum<LIMBS> {
 
     //     // normalise divisor
     //     let normalising_shift = divisor.leading_zeros() - dividend.leading_zeros();
-    //     divisor <<= normalising_shift;
+    //     divisor.shl_with_overflow(normalising_shift);
     //     debug_assert_eq!(dividend.leading_zeros(), divisor.leading_zeros());
 
     //     // initialize quotient and remainder
@@ -102,10 +124,12 @@ impl<const LIMBS: usize> WideBignum<LIMBS> {
     //             dividend -= divisor;
     //             quotient |= Bignum::ONE;
     //         }
-    //         divisor >>= 1;
+    //         divisor.shr_with_overflow(1);
     //     }
 
-    //     dividend
+    //     let (hi, lo) = dividend.split();
+    //     assert!(hi.is_zero());
+    //     lo
     // }
 }
 
@@ -145,6 +169,45 @@ mod tests {
                         Bignum::MAX << ((i - LIMBS as u32) * 64)
                     },
                     lo: Bignum::ZERO,
+                }
+            };
+
+            assert_eq!(correct, wide);
+        }
+    }
+
+    #[test]
+    fn test_shr_wide_bignums() {
+        const LIMBS: usize = 10;
+
+        for i in 0..2 * LIMBS as u32 {
+            let lo: Bignum<LIMBS> = Bignum::ZERO;
+            let hi: Bignum<LIMBS> = Bignum::MAX;
+            let mut wide = WideBignum { hi, lo };
+
+            assert!(!wide.shr_with_overflow(i * 64));
+
+            let correct = if i < LIMBS as u32 {
+                WideBignum {
+                    hi: if i == 0 {
+                        Bignum::MAX
+                    } else {
+                        Bignum::MAX >> (i * 64)
+                    },
+                    lo: if i == 0 {
+                        Bignum::ZERO
+                    } else {
+                        Bignum::MAX << ((LIMBS as u32 - i) * 64)
+                    },
+                }
+            } else {
+                WideBignum {
+                    hi: Bignum::ZERO,
+                    lo: if i == LIMBS as u32 * 64 {
+                        Bignum::MAX
+                    } else {
+                        Bignum::MAX >> ((i - LIMBS as u32) * 64)
+                    },
                 }
             };
 
