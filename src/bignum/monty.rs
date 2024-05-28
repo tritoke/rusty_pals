@@ -1,7 +1,7 @@
 use std::cmp::Ordering;
 use std::rc::Rc;
 
-use super::{arith::carrying_add, Bignum};
+use super::{arith::carrying_add, wide::WideBignum, Bignum};
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct MontyInfo<const LIMBS: usize> {
@@ -17,7 +17,7 @@ impl<const LIMBS: usize> MontyInfo<LIMBS> {
         r %= &modulus;
         r.add_with_overflow(&Bignum::from(1_u8));
 
-        let r2 = Bignum::MAX;
+        let r2 = r.mul_wide(&r).remainder(&modulus);
         let b = Bignum::ONE << 64;
         let inv = modulus.inv_mod(&b);
         let m_inv = inv.limbs[0];
@@ -31,9 +31,8 @@ impl<const LIMBS: usize> MontyInfo<LIMBS> {
         }
     }
 
-    fn montgomery_reduction(&self, lower: &Bignum<LIMBS>, upper: &Bignum<LIMBS>) -> Bignum<LIMBS> {
-        let mut lower = *lower;
-        let mut upper = *upper;
+    fn montgomery_reduction(&self, n: WideBignum<LIMBS>) -> Bignum<LIMBS> {
+        let (mut upper, mut lower) = n.split();
 
         for i in 0..LIMBS {
             let u = lower.limbs[i].wrapping_mul(self.m_prime);
@@ -77,14 +76,16 @@ pub struct MontyForm<const LIMBS: usize> {
 
 impl<const LIMBS: usize> MontyForm<LIMBS> {
     pub fn new(num: &Bignum<LIMBS>, info: Rc<MontyInfo<LIMBS>>) -> Self {
-        let inner = info.montgomery_reduction(num, &Bignum::ZERO);
+        let inner = info.montgomery_reduction(num.mul_wide(&info.r_squared));
         Self { info, inner }
     }
 }
 
 impl<const LIMBS: usize> From<MontyForm<LIMBS>> for Bignum<LIMBS> {
     fn from(value: MontyForm<LIMBS>) -> Self {
-        value.info.montgomery_reduction(&Bignum::ZERO, &value.inner)
+        value
+            .info
+            .montgomery_reduction(WideBignum::new_low(value.inner))
     }
 }
 
@@ -108,17 +109,10 @@ mod test {
     #[test]
     fn test_montyform_roundtrip() {
         let monty_info = Rc::new(MontyInfo::new(nist::NIST_P));
-        // let mf = MontyForm::new(&0u8.into(), monty_info.clone());
-        // assert_eq!(mf.inner, Bignum::from(0_u32));
-        let mf = MontyForm::new(&1u8.into(), monty_info.clone());
-        assert_eq!(mf.inner, Bignum::from(monty_info.r));
-        // let mf = MontyForm::new(&2u8.into(), monty_info.clone());
-        // assert_eq!(mf.inner, Bignum::from(monty_info.r));
-        // for i in 0u64..10 {
-        //     eprintln!("{i}");
-        //     let bn = i.into();
-        //     let mf = MontyForm::new(&bn, monty_info.clone());
-        //     assert_eq!(Bignum::from(mf), bn);
-        // }
+        for i in 0u64..100 {
+            let bn = i.into();
+            let mf = MontyForm::new(&bn, monty_info.clone());
+            assert_eq!(Bignum::from(mf), bn);
+        }
     }
 }

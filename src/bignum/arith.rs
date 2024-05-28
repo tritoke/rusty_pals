@@ -6,6 +6,8 @@ use std::ops::{
 
 use crate::bignum::Bignum;
 
+use super::wide::WideBignum;
+
 // we dont have nightly but i can steal from nightly >:)
 #[inline]
 pub(super) const fn carrying_add(x: u64, y: u64, carry: bool) -> (u64, bool) {
@@ -33,6 +35,15 @@ impl<const LIMBS: usize> Bignum<LIMBS> {
         let mut carry = false;
         for (l, r) in self.limbs.iter_mut().zip(rhs.limbs.iter()) {
             let (sum, overflow) = carrying_add(*l, *r, carry);
+            *l = sum;
+            carry = overflow;
+        }
+        carry
+    }
+
+    pub(super) fn borrowing_sub_with_overflow(&mut self, rhs: &Self, mut carry: bool) -> bool {
+        for (l, r) in self.limbs.iter_mut().zip(rhs.limbs.iter()) {
+            let (sum, overflow) = borrowing_sub(*l, *r, carry);
             *l = sum;
             carry = overflow;
         }
@@ -92,7 +103,7 @@ impl<const LIMBS: usize> Bignum<LIMBS> {
         (out, carry)
     }
 
-    pub(super) fn mul_wide(&self, rhs: &Self) -> (Self, Self) {
+    pub(super) fn mul_wide(&self, rhs: &Self) -> WideBignum<LIMBS> {
         let mut lower = Self::ZERO;
         let mut upper = Self::ZERO;
 
@@ -107,7 +118,7 @@ impl<const LIMBS: usize> Bignum<LIMBS> {
             }
         }
 
-        (lower, upper)
+        WideBignum::new(upper, lower)
     }
 
     pub(super) fn shr_with_overflow(&mut self, rhs: u32) -> bool {

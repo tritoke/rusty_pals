@@ -1,14 +1,25 @@
 use super::Bignum;
-use std::ops::{Rem, RemAssign};
 
 /// A double wide bignum used to store the result of operations that have a double wide result
 /// For example multiplcation / squaring
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
-pub struct WideBignum<const LIMBS: usize> {
+pub(super) struct WideBignum<const LIMBS: usize> {
     /// The most significant half of the number
     hi: Bignum<LIMBS>,
     /// The least significant half of the number
     lo: Bignum<LIMBS>,
+}
+
+impl<const LIMBS: usize> PartialOrd for WideBignum<LIMBS> {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl<const LIMBS: usize> Ord for WideBignum<LIMBS> {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.hi.cmp(&other.hi).then_with(|| self.lo.cmp(&other.lo))
+    }
 }
 
 impl<const LIMBS: usize> PartialEq<Bignum<LIMBS>> for WideBignum<LIMBS> {
@@ -34,8 +45,29 @@ impl<const LIMBS: usize> WideBignum<LIMBS> {
         lo: Bignum::ZERO,
     };
 
+    pub const MAX: Self = Self {
+        hi: Bignum::MAX,
+        lo: Bignum::MAX,
+    };
+
+    pub const MIN: Self = Self::ZERO;
+
     pub fn new(high: Bignum<LIMBS>, low: Bignum<LIMBS>) -> Self {
         Self { hi: high, lo: low }
+    }
+
+    pub fn new_low(limb: Bignum<LIMBS>) -> Self {
+        Self {
+            hi: Bignum::ZERO,
+            lo: limb,
+        }
+    }
+
+    pub fn new_high(limb: Bignum<LIMBS>) -> Self {
+        Self {
+            hi: limb,
+            lo: Bignum::ZERO,
+        }
     }
 
     pub fn split(self) -> (Bignum<LIMBS>, Bignum<LIMBS>) {
@@ -43,10 +75,10 @@ impl<const LIMBS: usize> WideBignum<LIMBS> {
     }
 
     fn leading_zeros(&self) -> u32 {
-        if self.lo.is_zero() {
+        if self.hi.is_zero() {
             self.hi.leading_zeros() + self.lo.leading_zeros()
         } else {
-            self.lo.leading_zeros()
+            self.hi.leading_zeros()
         }
     }
 
@@ -94,47 +126,49 @@ impl<const LIMBS: usize> WideBignum<LIMBS> {
         false
     }
 
-    // fn remainder(self, modulus: &Bignum<LIMBS>) -> Bignum<LIMBS> {
-    //     debug_assert!(!modulus.is_zero(), "attempt to divide by zero");
+    fn sub_with_overflow(&mut self, rhs: &Self) -> bool {
+        let carry = self.lo.sub_with_overflow(&rhs.lo);
+        self.hi.borrowing_sub_with_overflow(&rhs.hi, carry)
+    }
 
-    //     // early exit for simple cases - CT is hard lmao
-    //     if modulus.is_one() {
-    //         return Bignum::ZERO;
-    //     }
+    pub fn remainder(self, modulus: &Bignum<LIMBS>) -> Bignum<LIMBS> {
+        debug_assert!(!modulus.is_zero(), "attempt to divide by zero");
 
-    //     if &self < modulus {
-    //         return self.lo;
-    //     }
+        // early exit for simple cases - CT is hard lmao
+        if modulus.is_one() {
+            return Bignum::ZERO;
+        }
 
-    //     let mut dividend = self;
-    //     let mut divisor = WideBignum::new(Bignum::ZERO, *modulus);
+        if &self < modulus {
+            return self.lo;
+        }
 
-    //     // normalise divisor
-    //     let normalising_shift = divisor.leading_zeros() - dividend.leading_zeros();
-    //     divisor.shl_with_overflow(normalising_shift);
-    //     debug_assert_eq!(dividend.leading_zeros(), divisor.leading_zeros());
+        let mut dividend = self;
+        let mut divisor = WideBignum::new(Bignum::ZERO, *modulus);
 
-    //     // initialize quotient and remainder
-    //     let mut quotient = Bignum::ZERO;
+        // normalise divisor
+        let normalising_shift = divisor.leading_zeros() - dividend.leading_zeros();
+        divisor.shl_with_overflow(normalising_shift);
+        debug_assert_eq!(dividend.leading_zeros(), divisor.leading_zeros());
 
-    //     // perform the division
-    //     while &dividend >= modulus {
-    //         quotient <<= 1;
-    //         if dividend >= divisor {
-    //             dividend -= divisor;
-    //             quotient |= Bignum::ONE;
-    //         }
-    //         divisor.shr_with_overflow(1);
-    //     }
+        // perform the division
+        while &dividend >= modulus {
+            if dividend >= divisor {
+                dividend.sub_with_overflow(&divisor);
+            }
+            divisor.shr_with_overflow(1);
+        }
 
-    //     let (hi, lo) = dividend.split();
-    //     assert!(hi.is_zero());
-    //     lo
-    // }
+        let (hi, lo) = dividend.split();
+        assert!(hi.is_zero());
+        lo
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::bignum::nist;
+
     use super::*;
 
     #[test]
@@ -213,5 +247,92 @@ mod tests {
 
             assert_eq!(correct, wide);
         }
+    }
+
+    #[test]
+    fn test_leading_zeros_bignums() {
+        let a: WideBignum<10> = WideBignum {
+            hi: Bignum {
+                limbs: [0, 0, 0, 0, 0, 0, 0, 0, u64::MAX, 0],
+            },
+            lo: Bignum::ZERO,
+        };
+        assert_eq!(a.leading_zeros(), 64);
+
+        let a: WideBignum<10> = WideBignum {
+            hi: Bignum::ZERO,
+            lo: Bignum {
+                limbs: [0, 0, 0, 0, 0, 0, 0, 0, u64::MAX, 0],
+            },
+        };
+        assert_eq!(a.leading_zeros(), 64 * 11);
+
+        assert_eq!(WideBignum::<10>::MIN.leading_zeros(), 64 * 10 * 2);
+        assert_eq!(WideBignum::<10>::MAX.leading_zeros(), 0);
+        let mut a = WideBignum::<10>::MAX;
+        a.shr_with_overflow(50);
+        assert_eq!(a.leading_zeros(), 50);
+    }
+
+    #[test]
+    fn test_sub_wide_bignums() {
+        let a: WideBignum<10> = WideBignum {
+            hi: Bignum::ZERO,
+            lo: 5u8.into(),
+        };
+        let mut b: WideBignum<10> = WideBignum {
+            hi: Bignum::ZERO,
+            lo: 6u8.into(),
+        };
+        b.sub_with_overflow(&a);
+        assert_eq!(b.lo, 1u8.into());
+        assert!(b.hi.is_zero());
+
+        let mut a: WideBignum<10> = WideBignum {
+            hi: Bignum::ZERO,
+            lo: Bignum {
+                limbs: [0, 1, 0, 0, 0, 0, 0, 0, 0, 0],
+            },
+        };
+        let b: WideBignum<10> = WideBignum {
+            hi: Bignum::ZERO,
+            lo: 1u8.into(),
+        };
+        a.sub_with_overflow(&b);
+        assert_eq!(a.lo, u64::MAX.into());
+        assert!(a.hi.is_zero());
+
+        let mut a: WideBignum<10> = WideBignum::MAX;
+        let b: WideBignum<10> = WideBignum::MAX;
+        a.sub_with_overflow(&b);
+        assert!(a.lo.is_zero() && a.hi.is_zero());
+
+        let mut a: WideBignum<10> = WideBignum {
+            hi: Bignum::MAX,
+            lo: Bignum::ZERO,
+        };
+        let b: WideBignum<10> = WideBignum {
+            hi: Bignum::ZERO,
+            lo: Bignum::MAX,
+        };
+        a.sub_with_overflow(&b);
+
+        let mut correct_hi = Bignum::MAX;
+        correct_hi -= Bignum::from(1u8);
+
+        assert_eq!(
+            a,
+            WideBignum {
+                hi: correct_hi,
+                lo: Bignum::ONE
+            }
+        );
+    }
+
+    #[test]
+    fn test_rem_wide_bignums() {
+        let rmdr = WideBignum::MAX.remainder(&nist::NIST_P);
+        let correct: Bignum<24> = "0xe3b33c7259541c01ee9c9a216cc1ebd2ae5941047929a1c7e9c3fa02cc2456ef102630fa9a36a51f57b59348679844600be49647a87c7b37f8056564969b7f02dc541a4ed4053f54d62a0eeab270521b22c296e9d46fec238e1abd780223b76bb8fe6121196b7e881c729c7e04b9f79607cd0a628e43413004a541ff93ae1cebb004a750db102d39b9052bb47a58f1707e8cd2ac98b5fb628f2331b13b01e018f466ee5fbcd49d68d0ab92e18397f2458e0e3e2167478c73f115d27d32c695df".parse().unwrap();
+        assert_eq!(correct, rmdr);
     }
 }
