@@ -1,4 +1,5 @@
 use std::cmp::Ordering;
+use std::ops::{Add, AddAssign, Mul, MulAssign, Sub, SubAssign};
 use std::rc::Rc;
 
 use super::{arith::carrying_add, wide::WideBignum, Bignum};
@@ -79,6 +80,26 @@ impl<const LIMBS: usize> MontyForm<LIMBS> {
         let inner = info.montgomery_reduction(num.mul_wide(&info.r_squared));
         Self { info, inner }
     }
+
+    fn addition(&mut self, rhs: &Self) {
+        self.inner += &rhs.inner;
+        if self.inner >= self.info.m {
+            self.inner -= &self.info.m;
+        }
+    }
+
+    fn subtraction(&mut self, rhs: &Self) {
+        if self.inner < rhs.inner {
+            self.inner += &self.info.m;
+        }
+        self.inner -= &rhs.inner;
+    }
+
+    fn multiplication(&mut self, rhs: &Self) {
+        self.inner = self
+            .info
+            .montgomery_reduction(self.inner.mul_wide(&rhs.inner));
+    }
 }
 
 impl<const LIMBS: usize> From<MontyForm<LIMBS>> for Bignum<LIMBS> {
@@ -88,6 +109,42 @@ impl<const LIMBS: usize> From<MontyForm<LIMBS>> for Bignum<LIMBS> {
             .montgomery_reduction(WideBignum::new_low(value.inner))
     }
 }
+
+super::arith::bignum_arith_impls!(
+    MontyForm<LIMBS>,
+    MontyForm<LIMBS>,
+    allow_rhs_ref,
+    Add,
+    add,
+    AddAssign,
+    add_assign,
+    addition,
+    no_overflow
+);
+
+super::arith::bignum_arith_impls!(
+    MontyForm<LIMBS>,
+    MontyForm<LIMBS>,
+    allow_rhs_ref,
+    Sub,
+    sub,
+    SubAssign,
+    sub_assign,
+    subtraction,
+    no_overflow
+);
+
+super::arith::bignum_arith_impls!(
+    MontyForm<LIMBS>,
+    MontyForm<LIMBS>,
+    allow_rhs_ref,
+    Mul,
+    mul,
+    MulAssign,
+    mul_assign,
+    multiplication,
+    no_overflow
+);
 
 #[cfg(test)]
 mod test {
@@ -113,6 +170,63 @@ mod test {
             let bn = i.into();
             let mf = MontyForm::new(&bn, monty_info.clone());
             assert_eq!(Bignum::from(mf), bn);
+        }
+    }
+
+    #[test]
+    fn test_montyform_addition_roundtrip() {
+        let monty_info = Rc::new(MontyInfo::new(nist::NIST_P));
+        for x in 0u64..100 {
+            for y in 0u64..100 {
+                let xn = x.into();
+                let xmf = MontyForm::new(&xn, monty_info.clone());
+                let yn = y.into();
+                let ymf = MontyForm::new(&yn, monty_info.clone());
+                let zmf = xmf + ymf;
+                let zn = xn + yn;
+                assert_eq!(Bignum::from(zmf), zn);
+            }
+        }
+    }
+
+    #[test]
+    fn test_montyform_subtraction_roundtrip() {
+        let monty_info = Rc::new(MontyInfo::new(nist::NIST_P));
+        for x in 0u64..100 {
+            for y in 0u64..100 {
+                let xn = x.into();
+                let xmf = MontyForm::new(&xn, monty_info.clone());
+                let yn = y.into();
+                let ymf = MontyForm::new(&yn, monty_info.clone());
+                let zmf = xmf - ymf;
+                let zn = if x >= y {
+                    xn - yn
+                } else {
+                    (monty_info.m - yn) + xn
+                };
+                assert_eq!(Bignum::from(zmf), zn);
+            }
+        }
+    }
+
+    #[test]
+    fn test_montyform_multiplication_roundtrip() {
+        let monty_info = Rc::new(MontyInfo::new(nist::NIST_P));
+        for x in 0u64..100 {
+            for y in 0u64..100 {
+                dbg!(x, y);
+                let xn = x.into();
+                let xmf = MontyForm::new(&xn, monty_info.clone());
+                let yn = y.into();
+                let ymf = MontyForm::new(&yn, monty_info.clone());
+                dbg!(&xmf.inner);
+                dbg!(&ymf.inner);
+                let zmf = xmf * ymf;
+                dbg!(&zmf.inner);
+                let zn = xn * yn;
+                dbg!(zn);
+                assert_eq!(dbg!(Bignum::from(zmf)), zn);
+            }
         }
     }
 }

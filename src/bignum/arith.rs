@@ -107,15 +107,26 @@ impl<const LIMBS: usize> Bignum<LIMBS> {
         let mut lower = Self::ZERO;
         let mut upper = Self::ZERO;
 
-        for (i, r) in rhs.limbs.iter().enumerate() {
+        for (i, r) in rhs
+            .limbs
+            .iter()
+            .chain(std::iter::repeat(&0).take(LIMBS))
+            .enumerate()
+        {
             let mut carry = 0;
             let out_limbs = lower.limbs.iter_mut().chain(upper.limbs.iter_mut()).skip(i);
-            for (l, o) in self.limbs.iter().zip(out_limbs) {
+            for (l, o) in self
+                .limbs
+                .iter()
+                .chain(std::iter::repeat(&0))
+                .zip(out_limbs)
+            {
                 let (prod, next_carry) = carrying_mul(*r, *l, carry);
                 let (new_limb, add_carry) = o.overflowing_add(prod);
                 carry = next_carry + u64::from(add_carry);
                 *o = new_limb;
             }
+            debug_assert_eq!(carry, 0);
         }
 
         WideBignum::new(upper, lower)
@@ -321,8 +332,8 @@ impl_from_for_bignum!(u16);
 impl_from_for_bignum!(u8);
 
 macro_rules! bignum_arith_impls {
-    ($rhs:ty, allow_rhs_ref, $trait:ident, $op:ident, $trait_assign:ident, $op_assign:ident, $method:ident, $overflow_message:literal) => {
-        impl<const LIMBS: usize> $trait<$rhs> for Bignum<LIMBS> {
+    ($lhs:ty, $rhs:ty, allow_rhs_ref, $trait:ident, $op:ident, $trait_assign:ident, $op_assign:ident, $method:ident, $overflow_message:literal) => {
+        impl<const LIMBS: usize> $trait<$rhs> for $lhs {
             type Output = Self;
 
             fn $op(self, rhs: $rhs) -> Self::Output {
@@ -333,7 +344,7 @@ macro_rules! bignum_arith_impls {
             }
         }
 
-        impl<const LIMBS: usize> $trait<&$rhs> for Bignum<LIMBS> {
+        impl<const LIMBS: usize> $trait<&$rhs> for $lhs {
             type Output = Self;
 
             fn $op(self, rhs: &$rhs) -> Self::Output {
@@ -344,8 +355,8 @@ macro_rules! bignum_arith_impls {
             }
         }
 
-        impl<const LIMBS: usize> $trait<$rhs> for &Bignum<LIMBS> {
-            type Output = Bignum<LIMBS>;
+        impl<const LIMBS: usize> $trait<$rhs> for &$lhs {
+            type Output = $lhs;
 
             fn $op(self, rhs: $rhs) -> Self::Output {
                 let mut out = self.clone();
@@ -355,8 +366,8 @@ macro_rules! bignum_arith_impls {
             }
         }
 
-        impl<const LIMBS: usize> $trait<&$rhs> for &Bignum<LIMBS> {
-            type Output = Bignum<LIMBS>;
+        impl<const LIMBS: usize> $trait<&$rhs> for &$lhs {
+            type Output = $lhs;
 
             fn $op(self, rhs: &$rhs) -> Self::Output {
                 let mut out = self.clone();
@@ -366,14 +377,14 @@ macro_rules! bignum_arith_impls {
             }
         }
 
-        impl<const LIMBS: usize> $trait_assign<$rhs> for Bignum<LIMBS> {
+        impl<const LIMBS: usize> $trait_assign<$rhs> for $lhs {
             fn $op_assign(&mut self, rhs: $rhs) {
                 let overflow = self.$method(&rhs);
                 debug_assert!(!overflow, $overflow_message);
             }
         }
 
-        impl<const LIMBS: usize> $trait_assign<&$rhs> for Bignum<LIMBS> {
+        impl<const LIMBS: usize> $trait_assign<&$rhs> for $lhs {
             fn $op_assign(&mut self, rhs: &$rhs) {
                 let overflow = self.$method(rhs);
                 debug_assert!(!overflow, $overflow_message);
@@ -381,8 +392,8 @@ macro_rules! bignum_arith_impls {
         }
     };
 
-    ($rhs:ty, allow_rhs_ref, $trait:ident, $op:ident, $trait_assign:ident, $op_assign:ident, $method:ident, no_overflow) => {
-        impl<const LIMBS: usize> $trait<$rhs> for Bignum<LIMBS> {
+    ($lhs:ty, $rhs:ty, allow_rhs_ref, $trait:ident, $op:ident, $trait_assign:ident, $op_assign:ident, $method:ident, no_overflow) => {
+        impl<const LIMBS: usize> $trait<$rhs> for $lhs {
             type Output = Self;
 
             fn $op(self, rhs: $rhs) -> Self::Output {
@@ -392,7 +403,7 @@ macro_rules! bignum_arith_impls {
             }
         }
 
-        impl<const LIMBS: usize> $trait<&$rhs> for Bignum<LIMBS> {
+        impl<const LIMBS: usize> $trait<&$rhs> for $lhs {
             type Output = Self;
 
             fn $op(self, rhs: &$rhs) -> Self::Output {
@@ -402,8 +413,8 @@ macro_rules! bignum_arith_impls {
             }
         }
 
-        impl<const LIMBS: usize> $trait<$rhs> for &Bignum<LIMBS> {
-            type Output = Bignum<LIMBS>;
+        impl<const LIMBS: usize> $trait<$rhs> for &$lhs {
+            type Output = $lhs;
 
             fn $op(self, rhs: $rhs) -> Self::Output {
                 let mut out = self.clone();
@@ -412,8 +423,8 @@ macro_rules! bignum_arith_impls {
             }
         }
 
-        impl<const LIMBS: usize> $trait<&$rhs> for &Bignum<LIMBS> {
-            type Output = Bignum<LIMBS>;
+        impl<const LIMBS: usize> $trait<&$rhs> for &$lhs {
+            type Output = $lhs;
 
             fn $op(self, rhs: &$rhs) -> Self::Output {
                 let mut out = self.clone();
@@ -422,21 +433,21 @@ macro_rules! bignum_arith_impls {
             }
         }
 
-        impl<const LIMBS: usize> $trait_assign<$rhs> for Bignum<LIMBS> {
+        impl<const LIMBS: usize> $trait_assign<$rhs> for $lhs {
             fn $op_assign(&mut self, rhs: $rhs) {
                 self.$method(&rhs)
             }
         }
 
-        impl<const LIMBS: usize> $trait_assign<&$rhs> for Bignum<LIMBS> {
+        impl<const LIMBS: usize> $trait_assign<&$rhs> for $lhs {
             fn $op_assign(&mut self, rhs: &$rhs) {
                 self.$method(rhs)
             }
         }
     };
 
-    ($rhs:ty, no_rhs_ref, $trait:ident, $op:ident, $trait_assign:ident, $op_assign:ident, $method:ident, $overflow_message:literal) => {
-        impl<const LIMBS: usize> $trait<$rhs> for Bignum<LIMBS> {
+    ($lhs:ty, $rhs:ty, no_rhs_ref, $trait:ident, $op:ident, $trait_assign:ident, $op_assign:ident, $method:ident, $overflow_message:literal) => {
+        impl<const LIMBS: usize> $trait<$rhs> for $lhs {
             type Output = Self;
 
             fn $op(self, rhs: $rhs) -> Self::Output {
@@ -447,8 +458,8 @@ macro_rules! bignum_arith_impls {
             }
         }
 
-        impl<const LIMBS: usize> $trait<$rhs> for &Bignum<LIMBS> {
-            type Output = Bignum<LIMBS>;
+        impl<const LIMBS: usize> $trait<$rhs> for &$lhs {
+            type Output = $lhs;
 
             fn $op(self, rhs: $rhs) -> Self::Output {
                 let mut out = self.clone();
@@ -458,7 +469,7 @@ macro_rules! bignum_arith_impls {
             }
         }
 
-        impl<const LIMBS: usize> $trait_assign<$rhs> for Bignum<LIMBS> {
+        impl<const LIMBS: usize> $trait_assign<$rhs> for $lhs {
             fn $op_assign(&mut self, rhs: $rhs) {
                 let overflow = self.$method(rhs);
                 debug_assert!(!overflow, $overflow_message);
@@ -467,7 +478,10 @@ macro_rules! bignum_arith_impls {
     };
 }
 
+pub(super) use bignum_arith_impls;
+
 bignum_arith_impls!(
+    Bignum<LIMBS>,
     Bignum<LIMBS>,
     allow_rhs_ref,
     Add,
@@ -480,6 +494,7 @@ bignum_arith_impls!(
 
 bignum_arith_impls!(
     Bignum<LIMBS>,
+    Bignum<LIMBS>,
     allow_rhs_ref,
     Sub,
     sub,
@@ -491,6 +506,7 @@ bignum_arith_impls!(
 
 bignum_arith_impls!(
     Bignum<LIMBS>,
+    Bignum<LIMBS>,
     allow_rhs_ref,
     Mul,
     mul,
@@ -501,6 +517,7 @@ bignum_arith_impls!(
 );
 
 bignum_arith_impls!(
+    Bignum<LIMBS>,
     u32,
     no_rhs_ref,
     Shr,
@@ -512,6 +529,7 @@ bignum_arith_impls!(
 );
 
 bignum_arith_impls!(
+    Bignum<LIMBS>,
     u32,
     no_rhs_ref,
     Shl,
@@ -524,6 +542,7 @@ bignum_arith_impls!(
 
 bignum_arith_impls!(
     Bignum<LIMBS>,
+    Bignum<LIMBS>,
     allow_rhs_ref,
     BitAnd,
     bitand,
@@ -534,6 +553,7 @@ bignum_arith_impls!(
 );
 
 bignum_arith_impls!(
+    Bignum<LIMBS>,
     Bignum<LIMBS>,
     allow_rhs_ref,
     BitOr,
@@ -546,6 +566,7 @@ bignum_arith_impls!(
 
 bignum_arith_impls!(
     Bignum<LIMBS>,
+    Bignum<LIMBS>,
     allow_rhs_ref,
     BitXor,
     bitxor,
@@ -557,6 +578,7 @@ bignum_arith_impls!(
 
 bignum_arith_impls!(
     Bignum<LIMBS>,
+    Bignum<LIMBS>,
     allow_rhs_ref,
     Rem,
     rem,
@@ -567,6 +589,7 @@ bignum_arith_impls!(
 );
 
 bignum_arith_impls!(
+    Bignum<LIMBS>,
     Bignum<LIMBS>,
     allow_rhs_ref,
     Div,
@@ -778,6 +801,79 @@ mod tests {
                 ]
             }
         );
+    }
+
+    #[test]
+    fn test_wide_mul_bignums() {
+        let a: Bignum<10> = 5u8.into();
+        let b: Bignum<10> = 6u8.into();
+        let (hi, lo) = a.mul_wide(&b).split();
+        assert_eq!(lo, 30u8.into());
+        assert!(hi.is_zero());
+
+        let a: Bignum<10> = Bignum {
+            limbs: [0, 1, 0, 0, 0, 0, 0, 0, 0, 0],
+        };
+        let b: Bignum<10> = 10u8.into();
+        let (hi, lo) = a.mul_wide(&b).split();
+        assert_eq!(
+            lo,
+            Bignum {
+                limbs: [0, 10, 0, 0, 0, 0, 0, 0, 0, 0],
+            }
+        );
+        assert!(hi.is_zero());
+
+        let a: Bignum<10> = u64::MAX.into();
+        let b: Bignum<10> = u64::MAX.into();
+        let (hi, lo) = a.mul_wide(&b).split();
+        assert_eq!(
+            lo,
+            Bignum {
+                limbs: [1, u64::MAX - 1, 0, 0, 0, 0, 0, 0, 0, 0],
+            }
+        );
+        assert!(hi.is_zero());
+
+        let a = Bignum {
+            limbs: [
+                0xb4830d2b3cc4b4bb,
+                0x4d847515b57d26be,
+                0xf140fe29591db8b1,
+                0xbfc2c416d5e95510,
+                0xc1c04b03907d23ff,
+                0x0,
+                0x0,
+                0x0,
+                0x0,
+                0x0,
+            ],
+        };
+        let (hi, lo) = a.mul_wide(&a).split();
+        assert_eq!(
+            lo,
+            Bignum {
+                limbs: [
+                    0x623e80aee5ef8099,
+                    0xfe31042acea40485,
+                    0xa735be994a362d0d,
+                    0x592dc17e83bc9097,
+                    0x88fcd2b34c5b6749,
+                    0xa546f4d2292c911a,
+                    0xf623a0ab548f8545,
+                    0xe6b64acd44e6d989,
+                    0xa65707d712ccf8de,
+                    0x92a3818bfb3082b3
+                ]
+            }
+        );
+        assert!(hi.is_zero());
+
+        let a: Bignum<10> = Bignum::MAX;
+        let b: Bignum<10> = Bignum::MAX;
+        let (hi, lo) = a.mul_wide(&b).split();
+        assert!(lo.is_one());
+        assert_eq!(hi, Bignum::MAX);
     }
 
     #[test]
