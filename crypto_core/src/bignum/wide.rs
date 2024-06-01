@@ -39,6 +39,7 @@ impl<const LIMBS: usize> PartialOrd<Bignum<LIMBS>> for WideBignum<LIMBS> {
     }
 }
 
+#[allow(unused)]
 impl<const LIMBS: usize> WideBignum<LIMBS> {
     pub const ZERO: Self = Self {
         hi: Bignum::ZERO,

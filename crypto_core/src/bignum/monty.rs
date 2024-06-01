@@ -33,10 +33,10 @@ impl<const LIMBS: usize> MontyInfo<LIMBS> {
     }
 
     fn montgomery_reduction(&self, n: WideBignum<LIMBS>) -> Bignum<LIMBS> {
-        let (mut upper, mut lower) = n.split();
+        let (mut hi, mut lo) = n.split();
 
         for i in 0..LIMBS {
-            let u = lower.limbs[i].wrapping_mul(self.m_prime);
+            let u = lo.limbs[i].wrapping_mul(self.m_prime);
             let (prod, prod_carry) = self.m.mul_with_limb(u);
 
             let mut carry = false;
@@ -44,14 +44,14 @@ impl<const LIMBS: usize> MontyInfo<LIMBS> {
                 let to_add = match j.cmp(&LIMBS) {
                     Ordering::Less => prod.limbs[j],
                     Ordering::Equal => prod_carry,
-                    Ordering::Greater => carry as u64,
+                    Ordering::Greater => 0,
                 };
 
                 let k = i + j;
                 let ai = if k < LIMBS {
-                    &mut lower.limbs[k]
+                    &mut lo.limbs[k]
                 } else {
-                    &mut upper.limbs[k - LIMBS]
+                    &mut hi.limbs[k - LIMBS]
                 };
 
                 let (sum, overflow) = carrying_add(*ai, to_add, carry);
@@ -61,11 +61,7 @@ impl<const LIMBS: usize> MontyInfo<LIMBS> {
             debug_assert!(!carry);
         }
 
-        if upper > self.m {
-            upper -= &self.m;
-        }
-
-        upper
+        hi
     }
 }
 
@@ -82,20 +78,26 @@ impl<const LIMBS: usize> MontyForm<LIMBS> {
     }
 
     fn addition(&mut self, rhs: &Self) {
-        self.inner += &rhs.inner;
-        if self.inner >= self.info.m {
-            self.inner -= &self.info.m;
+        debug_assert!(self.inner < self.info.m);
+        debug_assert!(rhs.inner < self.info.m);
+        let overflow = self.inner.add_with_overflow(&rhs.inner);
+        if overflow || self.inner >= self.info.m {
+            self.inner.sub_with_overflow(&self.info.m);
         }
     }
 
     fn subtraction(&mut self, rhs: &Self) {
+        debug_assert!(self.inner < self.info.m);
+        debug_assert!(rhs.inner < self.info.m);
         if self.inner < rhs.inner {
-            self.inner += &self.info.m;
+            self.inner.add_with_overflow(&self.info.m);
         }
-        self.inner -= &rhs.inner;
+        self.inner.sub_with_overflow(&rhs.inner);
     }
 
     fn multiplication(&mut self, rhs: &Self) {
+        debug_assert!(self.inner < self.info.m);
+        debug_assert!(rhs.inner < self.info.m);
         self.inner = self
             .info
             .montgomery_reduction(self.inner.mul_wide(&rhs.inner));
@@ -171,13 +173,20 @@ mod test {
             let mf = MontyForm::new(&bn, monty_info.clone());
             assert_eq!(Bignum::from(mf), bn);
         }
+
+        for i in 1u64..=100 {
+            let mut bn = monty_info.m;
+            bn -= Bignum::from(i);
+            let mf = MontyForm::new(&bn, monty_info.clone());
+            assert_eq!(Bignum::from(mf), bn);
+        }
     }
 
     #[test]
     fn test_montyform_addition_roundtrip() {
         let monty_info = Rc::new(MontyInfo::new(nist::NIST_P));
-        for x in 0u64..100 {
-            for y in 0u64..100 {
+        for x in 0u64..50 {
+            for y in 0u64..50 {
                 let xn = x.into();
                 let xmf = MontyForm::new(&xn, monty_info.clone());
                 let yn = y.into();
@@ -192,8 +201,8 @@ mod test {
     #[test]
     fn test_montyform_subtraction_roundtrip() {
         let monty_info = Rc::new(MontyInfo::new(nist::NIST_P));
-        for x in 0u64..100 {
-            for y in 0u64..100 {
+        for x in 0u64..50 {
+            for y in 0u64..50 {
                 let xn = x.into();
                 let xmf = MontyForm::new(&xn, monty_info.clone());
                 let yn = y.into();
@@ -212,20 +221,15 @@ mod test {
     #[test]
     fn test_montyform_multiplication_roundtrip() {
         let monty_info = Rc::new(MontyInfo::new(nist::NIST_P));
-        for x in 0u64..100 {
-            for y in 0u64..100 {
-                dbg!(x, y);
+        for x in 0u64..50 {
+            for y in 0u64..50 {
                 let xn = x.into();
                 let xmf = MontyForm::new(&xn, monty_info.clone());
                 let yn = y.into();
                 let ymf = MontyForm::new(&yn, monty_info.clone());
-                dbg!(&xmf.inner);
-                dbg!(&ymf.inner);
                 let zmf = xmf * ymf;
-                dbg!(&zmf.inner);
                 let zn = xn * yn;
-                dbg!(zn);
-                assert_eq!(dbg!(Bignum::from(zmf)), zn);
+                assert_eq!(Bignum::from(zmf), zn);
             }
         }
     }

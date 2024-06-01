@@ -107,12 +107,7 @@ impl<const LIMBS: usize> Bignum<LIMBS> {
         let mut lower = Self::ZERO;
         let mut upper = Self::ZERO;
 
-        for (i, r) in rhs
-            .limbs
-            .iter()
-            .chain(std::iter::repeat(&0).take(LIMBS))
-            .enumerate()
-        {
+        for (i, r) in rhs.limbs.iter().enumerate() {
             let mut carry = 0;
             let out_limbs = lower.limbs.iter_mut().chain(upper.limbs.iter_mut()).skip(i);
             for (l, o) in self
@@ -804,7 +799,7 @@ mod tests {
     }
 
     #[test]
-    fn test_wide_mul_bignums() {
+    fn test_mul_wide_bignums() {
         let a: Bignum<10> = 5u8.into();
         let b: Bignum<10> = 6u8.into();
         let (hi, lo) = a.mul_wide(&b).split();
@@ -873,7 +868,7 @@ mod tests {
         let b: Bignum<10> = Bignum::MAX;
         let (hi, lo) = a.mul_wide(&b).split();
         assert!(lo.is_one());
-        assert_eq!(hi, Bignum::MAX);
+        assert_eq!(hi, Bignum::MAX - Bignum::from(1_u8));
     }
 
     #[test]

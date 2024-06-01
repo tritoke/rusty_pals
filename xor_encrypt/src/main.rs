@@ -1,7 +1,7 @@
 use anyhow::{bail, Context, Result};
 use clap::Parser;
-use rusty_pals::encoding::{Decodable, Encodable};
-use rusty_pals::xor;
+use crypto_core::encoding::{Decodable, Encodable};
+use crypto_core::xor;
 use std::fs;
 use std::fs::OpenOptions;
 use std::io::{self, Read, Write};
