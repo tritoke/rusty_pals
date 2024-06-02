@@ -35,33 +35,50 @@ impl<const LIMBS: usize> MontyInfo<LIMBS> {
     fn montgomery_reduction(&self, n: WideBignum<LIMBS>) -> Bignum<LIMBS> {
         let (mut hi, mut lo) = n.split();
 
+        let mut outer_carry = false;
         for i in 0..LIMBS {
             let u = lo.limbs[i].wrapping_mul(self.m_prime);
             let (prod, prod_carry) = self.m.mul_with_limb(u);
 
             let mut carry = false;
-            for j in 0..=LIMBS + (i < LIMBS - 1) as usize {
+            for j in 0..=LIMBS + 1 {
+                let k = i + j;
+                // let ai = n.limb_mut(k);
+                let ai = if k < LIMBS {
+                    &mut lo.limbs[k]
+                } else if k < LIMBS * 2 {
+                    &mut hi.limbs[k - LIMBS]
+                } else {
+                    break;
+                };
+
                 let to_add = match j.cmp(&LIMBS) {
                     Ordering::Less => prod.limbs[j],
                     Ordering::Equal => prod_carry,
                     Ordering::Greater => 0,
                 };
 
-                let k = i + j;
-                let ai = if k < LIMBS {
-                    &mut lo.limbs[k]
-                } else {
-                    &mut hi.limbs[k - LIMBS]
-                };
-
-                let (sum, overflow) = carrying_add(*ai, to_add, carry);
-                *ai = sum;
-                carry = overflow;
+                (*ai, carry) = carrying_add(*ai, to_add, carry);
             }
-            debug_assert!(!carry);
+
+            if i + 1 < LIMBS {
+                (hi.limbs[i + 1], outer_carry) =
+                    carrying_add(hi.limbs[i + 1], outer_carry as _, carry);
+            } else if outer_carry ^ carry {
+                outer_carry |= carry;
+            } else if outer_carry & carry {
+                unreachable!("I really hope I don't get here");
+            }
         }
 
-        hi
+        if outer_carry {
+            // AHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH
+            let mut wide = WideBignum::new(Bignum::ONE, hi);
+            wide.sub_with_overflow(&WideBignum::new_low(self.m));
+            wide.split().1
+        } else {
+            hi
+        }
     }
 }
 
@@ -71,6 +88,7 @@ pub struct MontyForm<const LIMBS: usize> {
     inner: Bignum<LIMBS>,
 }
 
+#[allow(unused)]
 impl<const LIMBS: usize> MontyForm<LIMBS> {
     pub fn new(num: &Bignum<LIMBS>, info: Rc<MontyInfo<LIMBS>>) -> Self {
         let inner = info.montgomery_reduction(num.mul_wide(&info.r_squared));
@@ -101,6 +119,26 @@ impl<const LIMBS: usize> MontyForm<LIMBS> {
         self.inner = self
             .info
             .montgomery_reduction(self.inner.mul_wide(&rhs.inner));
+    }
+
+    fn exponentation(&mut self, exponent: &Bignum<LIMBS>) {
+        if exponent.is_zero() {
+            self.inner = self.info.r;
+            return;
+        }
+
+        let t = (LIMBS * 64) - exponent.leading_zeros() as usize - 1;
+        debug_assert!(exponent.test_bit(t));
+
+        let mut out = Self::new(&self.info.r, self.info.clone());
+        for i in (0..=t).rev() {
+            out.multiplication(&out.clone());
+            if exponent.test_bit(i) {
+                out.multiplication(self);
+            }
+        }
+
+        *self = out;
     }
 }
 
@@ -232,5 +270,16 @@ mod test {
                 assert_eq!(Bignum::from(zmf), zn);
             }
         }
+    }
+
+    #[test]
+    fn test_montyform_exponentation() {
+        let monty_info = Rc::new(MontyInfo::new(nist::NIST_P));
+        let mut g = MontyForm::new(&Bignum::from(2u8), monty_info.clone());
+        let e: Bignum<24> = "0x34df1e8fb415e7164863df9ca4b97e0bb582c8405b2116f83d2ce74601da0229ba7a643004167d7ac68a579e47815e448253b4fe7f4cdd03711c8f4fea262cae30538bea04662bf134cb141fa214d6c65145a1cc28f4f110903c107a7b7b56c33ed8c7d0364e368928b75ca0a8b9eb058a7a855ebf6254c96da6df68ee7524472c2b25015326303a9b3e5742132723f73741abf0a9e5398690ee841b90377ce7a57f3554f2b62957371b24b6f2d945c1135a30b0c946f65183bfddcca23d70".parse().unwrap();
+        g.exponentation(&e);
+        let correct = "0x23e4dd0851fcf1a15d3217a3458d6e26a7c54a8fbe0d029c7c35c3f8e1da06321bf0bc1a52432c2077f03c4584a883348ca4cc7abe017732e743f4dca16dd2823ade5894c761bb7f1e3654fde54c7eab90a12e26d22120851ff0e89969faf51ec0de17f1dabff11cbfc8b5f0c288662f2fb736ce0948180609c3d47587e80c835d81587540e6c071d69f29cdf96d874631d1329de977ccb236255cf878fecaf7d2cfac23b0102575ac177a82ecd7e1cb62e1efd7d4aa0f2bc71898a173313507".parse().unwrap();
+        dbg!(correct);
+        assert_eq!(dbg!(Bignum::from(g)), correct);
     }
 }

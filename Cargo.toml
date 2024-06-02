@@ -1,14 +1,10 @@
-[package]
-name = "rusty_pals"
-version = "0.1.0"
-edition = "2021"
-
 [workspace]
 members = [
   "crypto_core",
   "xor_encrypt",
   "xor_brute",
 ]
+resolver = "2"
 
 [profile.release]
 debug = true

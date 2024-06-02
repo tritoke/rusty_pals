@@ -1961,6 +1961,12 @@ mod tests {
         assert_eq!(Bignum::<10>::MIN.leading_zeros(), 64 * 10);
         assert_eq!(Bignum::<10>::MAX.leading_zeros(), 0);
         assert_eq!((Bignum::<10>::MAX >> 50).leading_zeros(), 50);
+        for i in 0..64 {
+            let a: Bignum<10> = Bignum {
+                limbs: [0, 0, 0, 0, 0, 0, 0, 0, u64::MAX, u64::MAX >> i],
+            };
+            assert_eq!(a.leading_zeros(), i);
+        }
     }
 
     #[test]

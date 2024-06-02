@@ -369,7 +369,7 @@ impl<const LIMBS: usize> FromStr for Bignum<LIMBS> {
         }
 
         let mut out = Self::ZERO;
-        for (limb, chunk) in out.limbs.iter_mut().zip(bytes.chunks(16).rev()) {
+        for (limb, chunk) in out.limbs.iter_mut().zip(bytes.rchunks(16)) {
             *limb = u64::from_str_radix(
                 std::str::from_utf8(chunk).expect("MMH WHY IS THERE UNICODE IN YOUR NUMBER BOI"),
                 16,
@@ -414,6 +414,38 @@ mod tests {
         let p2: Bignum<24> = "ffffffffffffffffc90fdaa22168c234c4c6628b80dc1cd129024e088a67cc74020bbea63b139b22514a08798e3404ddef9519b3cd3a431b302b0a6df25f14374fe1356d6d51c245e485b576625e7ec6f44c42e9a637ed6b0bff5cb6f406b7edee386bfb5a899fa5ae9f24117c4b1fe649286651ece45b3dc2007cb8a163bf0598da48361c55d39a69163fa8fd24cf5f83655d23dca3ad961c62f356208552bb9ed529077096966d670c354e4abc9804f1746c08ca237327ffffffffffffffff".parse().unwrap();
         assert_eq!(p1, super::nist::NIST_P);
         assert_eq!(p2, super::nist::NIST_P);
+
+        let correct = Bignum {
+            limbs: [
+                0x5183BFDDCCA23D70,
+                0xC1135A30B0C946F6,
+                0x57371B24B6F2D945,
+                0xE7A57F3554F2B629,
+                0x8690EE841B90377C,
+                0xF73741ABF0A9E539,
+                0x3A9B3E5742132723,
+                0x472C2B2501532630,
+                0xC96DA6DF68EE7524,
+                0x058A7A855EBF6254,
+                0x8928B75CA0A8B9EB,
+                0xC33ED8C7D0364E36,
+                0x10903C107A7B7B56,
+                0xC65145A1CC28F4F1,
+                0xF134CB141FA214D6,
+                0xAE30538BEA04662B,
+                0x03711C8F4FEA262C,
+                0x448253B4FE7F4CDD,
+                0x7AC68A579E47815E,
+                0x29BA7A643004167D,
+                0xF83D2CE74601DA02,
+                0x0BB582C8405B2116,
+                0x164863DF9CA4B97E,
+                0x0034DF1E8FB415E7,
+            ],
+        };
+
+        let e: Bignum<24> = "0x34df1e8fb415e7164863df9ca4b97e0bb582c8405b2116f83d2ce74601da0229ba7a643004167d7ac68a579e47815e448253b4fe7f4cdd03711c8f4fea262cae30538bea04662bf134cb141fa214d6c65145a1cc28f4f110903c107a7b7b56c33ed8c7d0364e368928b75ca0a8b9eb058a7a855ebf6254c96da6df68ee7524472c2b25015326303a9b3e5742132723f73741abf0a9e5398690ee841b90377ce7a57f3554f2b62957371b24b6f2d945c1135a30b0c946f65183bfddcca23d70".parse().unwrap();
+        assert_eq!(e, correct);
     }
 
     #[test]
