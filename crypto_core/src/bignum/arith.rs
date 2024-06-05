@@ -89,20 +89,6 @@ impl<const LIMBS: usize> Bignum<LIMBS> {
         overflow
     }
 
-    pub(super) fn mul_with_limb(&self, rhs: u64) -> (Self, u64) {
-        let mut out = Self::ZERO;
-
-        let mut carry = 0;
-        for (l, o) in self.limbs.iter().zip(out.limbs.iter_mut()) {
-            let (prod, next_carry) = carrying_mul(rhs, *l, carry);
-            let (new_limb, add_carry) = o.overflowing_add(prod);
-            carry = next_carry + u64::from(add_carry);
-            *o = new_limb;
-        }
-
-        (out, carry)
-    }
-
     pub(super) fn mul_wide(&self, rhs: &Self) -> WideBignum<LIMBS> {
         let mut lower = Self::ZERO;
         let mut upper = Self::ZERO;

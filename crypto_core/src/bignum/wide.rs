@@ -75,27 +75,6 @@ impl<const LIMBS: usize> WideBignum<LIMBS> {
         (self.hi, self.lo)
     }
 
-    pub fn limb(&self, idx: usize) -> &u64 {
-        self.get_limb(idx)
-            .expect("Cannot get limb {idx}, we only have {LIMBS} limbs")
-    }
-
-    pub fn limb_mut(&mut self, idx: usize) -> &mut u64 {
-        self.get_limb_mut(idx)
-            .expect("Cannot get limb {idx}, we only have {LIMBS} limbs")
-    }
-
-    pub fn get_limb(&self, idx: usize) -> Option<&u64> {
-        self.lo.limbs.get(idx).or_else(|| self.hi.limbs.get(idx))
-    }
-
-    pub fn get_limb_mut(&mut self, idx: usize) -> Option<&mut u64> {
-        self.lo
-            .limbs
-            .get_mut(idx)
-            .or_else(|| self.hi.limbs.get_mut(idx))
-    }
-
     fn leading_zeros(&self) -> u32 {
         if self.hi.is_zero() {
             self.hi.leading_zeros() + self.lo.leading_zeros()
@@ -184,6 +163,38 @@ impl<const LIMBS: usize> WideBignum<LIMBS> {
         let (hi, lo) = dividend.split();
         assert!(hi.is_zero());
         lo
+    }
+
+    pub fn limb(&self, idx: usize) -> &u64 {
+        if idx < LIMBS {
+            &self.lo.limbs[idx]
+        } else {
+            &self.hi.limbs[idx - LIMBS]
+        }
+    }
+
+    pub fn limb_mut(&mut self, idx: usize) -> &mut u64 {
+        if idx < LIMBS {
+            &mut self.lo.limbs[idx]
+        } else {
+            &mut self.hi.limbs[idx - LIMBS]
+        }
+    }
+
+    pub fn limbs(&mut self) -> impl Iterator<Item = &u64> {
+        self.lo.limbs.iter().chain(self.hi.limbs.iter())
+    }
+
+    pub fn limbs_mut(&mut self) -> impl Iterator<Item = &mut u64> {
+        self.lo.limbs.iter_mut().chain(self.hi.limbs.iter_mut())
+    }
+
+    pub fn into_low(self) -> Bignum<LIMBS> {
+        self.lo
+    }
+
+    pub fn into_high(self) -> Bignum<LIMBS> {
+        self.hi
     }
 }
 

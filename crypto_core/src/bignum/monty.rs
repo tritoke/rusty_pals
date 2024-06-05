@@ -1,4 +1,3 @@
-use std::cmp::Ordering;
 use std::ops::{Add, AddAssign, Mul, MulAssign, Sub, SubAssign};
 use std::rc::Rc;
 
@@ -32,50 +31,32 @@ impl<const LIMBS: usize> MontyInfo<LIMBS> {
         }
     }
 
-    fn montgomery_reduction(&self, n: WideBignum<LIMBS>) -> Bignum<LIMBS> {
-        let (mut hi, mut lo) = n.split();
-
-        let mut outer_carry = false;
+    fn montgomery_reduction(&self, mut n: WideBignum<LIMBS>) -> Bignum<LIMBS> {
+        // keep track of the carry past the end of the current multiply-accumulate
+        let mut final_add_carry = false;
         for i in 0..LIMBS {
-            let u = lo.limbs[i].wrapping_mul(self.m_prime);
-            let (prod, prod_carry) = self.m.mul_with_limb(u);
+            let u = n.limb(i).wrapping_mul(self.m_prime);
 
-            let mut carry = false;
-            for j in 0..=LIMBS + 1 {
-                let k = i + j;
-                // let ai = n.limb_mut(k);
-                let ai = if k < LIMBS {
-                    &mut lo.limbs[k]
-                } else if k < LIMBS * 2 {
-                    &mut hi.limbs[k - LIMBS]
-                } else {
-                    break;
-                };
-
-                let to_add = match j.cmp(&LIMBS) {
-                    Ordering::Less => prod.limbs[j],
-                    Ordering::Equal => prod_carry,
-                    Ordering::Greater => 0,
-                };
-
-                (*ai, carry) = carrying_add(*ai, to_add, carry);
+            let mut carry = 0;
+            for (j, limb) in n.limbs_mut().skip(i).take(LIMBS).enumerate() {
+                // fuse the product with the modulus and addition of that into our wide number into
+                // one operation:
+                // https://en.wikipedia.org/wiki/Multiply-accumulate_operation
+                let wide = *limb as u128 + u as u128 * self.m.limbs[j] as u128 + carry as u128;
+                (*limb, carry) = (wide as u64, (wide >> 64) as u64);
             }
 
-            if i + 1 < LIMBS {
-                (hi.limbs[i + 1], outer_carry) =
-                    carrying_add(hi.limbs[i + 1], outer_carry as _, carry);
-            } else if outer_carry ^ carry {
-                outer_carry |= carry;
-            } else if outer_carry & carry {
-                unreachable!("I really hope I don't get here");
-            }
+            let limb = n.limb_mut(LIMBS + i);
+            (*limb, final_add_carry) = carrying_add(*limb, carry, final_add_carry);
         }
 
-        if outer_carry {
-            // AHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH
+        let hi = n.into_high();
+        if final_add_carry {
             let mut wide = WideBignum::new(Bignum::ONE, hi);
             wide.sub_with_overflow(&WideBignum::new_low(self.m));
-            wide.split().1
+            wide.into_low()
+        } else if hi >= self.m {
+            hi - self.m
         } else {
             hi
         }
@@ -130,7 +111,10 @@ impl<const LIMBS: usize> MontyForm<LIMBS> {
         let t = (LIMBS * 64) - exponent.leading_zeros() as usize - 1;
         debug_assert!(exponent.test_bit(t));
 
-        let mut out = Self::new(&self.info.r, self.info.clone());
+        let mut out = Self {
+            inner: self.info.r,
+            info: self.info.clone(),
+        };
         for i in (0..=t).rev() {
             out.multiplication(&out.clone());
             if exponent.test_bit(i) {
@@ -278,8 +262,8 @@ mod test {
         let mut g = MontyForm::new(&Bignum::from(2u8), monty_info.clone());
         let e: Bignum<24> = "0x34df1e8fb415e7164863df9ca4b97e0bb582c8405b2116f83d2ce74601da0229ba7a643004167d7ac68a579e47815e448253b4fe7f4cdd03711c8f4fea262cae30538bea04662bf134cb141fa214d6c65145a1cc28f4f110903c107a7b7b56c33ed8c7d0364e368928b75ca0a8b9eb058a7a855ebf6254c96da6df68ee7524472c2b25015326303a9b3e5742132723f73741abf0a9e5398690ee841b90377ce7a57f3554f2b62957371b24b6f2d945c1135a30b0c946f65183bfddcca23d70".parse().unwrap();
         g.exponentation(&e);
-        let correct = "0x23e4dd0851fcf1a15d3217a3458d6e26a7c54a8fbe0d029c7c35c3f8e1da06321bf0bc1a52432c2077f03c4584a883348ca4cc7abe017732e743f4dca16dd2823ade5894c761bb7f1e3654fde54c7eab90a12e26d22120851ff0e89969faf51ec0de17f1dabff11cbfc8b5f0c288662f2fb736ce0948180609c3d47587e80c835d81587540e6c071d69f29cdf96d874631d1329de977ccb236255cf878fecaf7d2cfac23b0102575ac177a82ecd7e1cb62e1efd7d4aa0f2bc71898a173313507".parse().unwrap();
-        dbg!(correct);
-        assert_eq!(dbg!(Bignum::from(g)), correct);
+        let pow = Bignum::from(g);
+        let correct = "0xae1333a1cdfbc612abbf7b08106bde0956a1af2819b960441f2874856afde40704fb87cb6974d5a804da6adbf7d82d721fdb5ca99eff43eee606bac06c1bce01fee46d1f6bc502d26f72e2e1dce1b68278e3ebf9305860c94d7d14a524d4497ad0aac356e50797c19d4c418ed00e8cab12e724a331f2b3371e4fcbeb9d8c35e809bb6d3448b99978ba9353c1fba8ed87f6d2687cc85484d76475217ba300cc58edeeca3f3e58bc18b956c7deb8be85da8c0102512b008390c31a6eb751549960".parse().unwrap();
+        assert_eq!(pow, correct);
     }
 }
