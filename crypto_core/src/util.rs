@@ -17,6 +17,8 @@ impl std::fmt::Display for CastError {
 
 impl std::error::Error for CastError {}
 
+pub type CastResult<T> = Result<T, CastError>;
+
 /// Detect whether an iterator contains a duplicate element
 pub fn has_duplicate<T>(it: impl IntoIterator<Item = T>) -> bool
 where
