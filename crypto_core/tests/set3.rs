@@ -1,51 +1,35 @@
-use rusty_pals::crypto::aes::{decrypt, Aes128, Mode};
-use rusty_pals::encoding::{Decodable, DecodingError};
-use rusty_pals::rand::{Mt19937, Rng32};
-use rusty_pals::xor::XorError;
+use crypto_core::crypto::aes::{decrypt, Aes128, Mode};
+use crypto_core::encoding::{Decodable, DecodingError};
+use crypto_core::rand::{Mt19937, Rng32};
+use crypto_core::util::CastError;
+use crypto_core::xor::XorError;
 use std::str::Utf8Error;
+use std::time::SystemTimeError;
+
+mod helpers;
+use helpers::*;
 
 #[derive(Debug, Clone)]
 pub enum ChallengeError {
     DecodingError(DecodingError),
     XorError(XorError),
     Utf8Error(Utf8Error),
+    SystemTimeError(SystemTimeError),
+    CastError(CastError),
 }
 
-impl std::fmt::Display for ChallengeError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{self:?}")
-    }
-}
-
-impl std::error::Error for ChallengeError {}
-
-impl From<DecodingError> for ChallengeError {
-    fn from(value: DecodingError) -> Self {
-        Self::DecodingError(value)
-    }
-}
-
-impl From<XorError> for ChallengeError {
-    fn from(value: XorError) -> Self {
-        Self::XorError(value)
-    }
-}
-
-impl From<Utf8Error> for ChallengeError {
-    fn from(value: Utf8Error) -> Self {
-        Self::Utf8Error(value)
-    }
-}
+impl_error_boilerplate!(ChallengeError);
+impl_error_from_types!(ChallengeError: DecodingError, XorError, Utf8Error, SystemTimeError, CastError);
 
 pub type ChallengeResult<T> = Result<T, ChallengeError>;
 
 mod chal17 {
-    use rusty_pals::crypto::{
+    use crypto_core::crypto::{
         aes::{decrypt, encrypt, Aes, Aes128, Mode},
         pad,
     };
-    use rusty_pals::rand::{Rng32, XorShift32};
-    use rusty_pals::util::cast_as_array;
+    use crypto_core::rand::{Rng32, XorShift32};
+    use crypto_core::util::cast_as_array;
 
     struct Challenge<'a> {
         key: Aes128,
@@ -191,10 +175,10 @@ fn challenge18() -> ChallengeResult<()> {
 #[allow(unused, unreachable_code)]
 mod chall19 {
     use crate::ChallengeResult;
-    use rusty_pals::crypto::aes::{encrypt, Aes128, Iv, Mode};
-    use rusty_pals::encoding::{Decodable, DecodingError, Encodable};
-    use rusty_pals::rand::{Rng32, XorShift32};
-    use rusty_pals::xor::xor_blocks;
+    use crypto_core::crypto::aes::{encrypt, Aes128, Iv, Mode};
+    use crypto_core::encoding::{Decodable, DecodingError, Encodable};
+    use crypto_core::rand::{Rng32, XorShift32};
+    use crypto_core::xor::xor_blocks;
 
     // I don't like this challenge, it makes me sad
     // #[test]
@@ -232,10 +216,10 @@ mod chall19 {
 
 mod chall20 {
     use crate::ChallengeResult;
-    use rusty_pals::crypto::aes::{encrypt, Aes128, Iv, Mode};
-    use rusty_pals::encoding::Decodable;
-    use rusty_pals::rand::{Rng32, XorShift32};
-    use rusty_pals::xor::{break_repeating_key_xor, xor_blocks};
+    use crypto_core::crypto::aes::{encrypt, Aes128, Iv, Mode};
+    use crypto_core::encoding::Decodable;
+    use crypto_core::rand::{Rng32, XorShift32};
+    use crypto_core::xor::{break_repeating_key_xor, xor_blocks};
 
     #[test]
     fn challenge20() -> ChallengeResult<()> {
@@ -301,12 +285,13 @@ fn challenge21() {
 }
 
 mod chall22 {
-    use anyhow::Result;
-    use rusty_pals::rand::{Mt19937, Rng32};
+    use crypto_core::rand::{Mt19937, Rng32};
     use std::time::{SystemTime, UNIX_EPOCH};
 
+    use super::ChallengeResult;
+
     #[test]
-    fn challenge22() -> Result<()> {
+    fn challenge22() -> ChallengeResult<()> {
         let mut rng = Mt19937::new();
         let mut unix_ts = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs() as u32;
         unix_ts += 40 + (rng.gen() % (1000 - 40));
@@ -332,13 +317,14 @@ mod chall22 {
 }
 
 mod chall23 {
-    use anyhow::Result;
-    use rusty_pals::rand::{Mt19937, Rng32};
-    use rusty_pals::util::try_cast_as_array;
+    use crypto_core::rand::{Mt19937, Rng32};
+    use crypto_core::util::{try_cast_as_array, CastResult};
     use std::iter;
 
+    use crate::ChallengeResult;
+
     fn untemper(mut t: u32) -> u32 {
-        use rusty_pals::rand::mt19937::constants::*;
+        use crypto_core::rand::mt19937::constants::*;
 
         fn bit(x: u32, n: u32) -> u32 {
             x & (1 << n)
@@ -391,7 +377,7 @@ mod chall23 {
     }
 
     #[test]
-    fn challenge23() -> Result<()> {
+    fn challenge23() -> ChallengeResult<()> {
         let mut rng = Mt19937::new();
         let tapped: Vec<_> = iter::from_fn(|| Some(rng.gen())).take(624).collect();
         let mut cloned = attack(&tapped[..])?;
@@ -403,19 +389,20 @@ mod chall23 {
         Ok(())
     }
 
-    fn attack(outputs: &[u32]) -> Result<Mt19937> {
+    fn attack(outputs: &[u32]) -> CastResult<Mt19937> {
         let raw_state: Vec<u32> = outputs.iter().copied().map(untemper).collect();
         Ok(Mt19937::from_state(try_cast_as_array(&raw_state[..])?))
     }
 }
 
 mod chall24 {
-    use anyhow::Result;
-    use rusty_pals::encoding::Encodable;
-    use rusty_pals::rand::{Mt19937, Rng32, XorShift32};
-    use rusty_pals::util::{as_chunks, as_chunks_mut};
-    use rusty_pals::xor::xor_block_simd_into;
+    use crypto_core::encoding::Encodable;
+    use crypto_core::rand::{Mt19937, Rng32, XorShift32};
+    use crypto_core::util::{as_chunks, as_chunks_mut};
+    use crypto_core::xor::xor_block_simd_into;
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    use crate::ChallengeResult;
 
     fn encrypt(data: impl AsRef<[u8]>, seed: u16) -> Vec<u8> {
         let mut data = data.as_ref().to_vec();
@@ -457,7 +444,7 @@ mod chall24 {
     }
 
     #[test]
-    fn challenge24() -> Result<()> {
+    fn challenge24() -> ChallengeResult<()> {
         let (seed, ct) = get_rand_ciphertext();
         assert_eq!(recover_seed(&ct[..]), seed);
 
@@ -491,7 +478,7 @@ mod chall24 {
         rng.gen_bytes(20).encode_b64()
     }
 
-    fn token_created_in_last_five_minutes(token: String) -> Result<bool> {
+    fn token_created_in_last_five_minutes(token: String) -> ChallengeResult<bool> {
         let curr_time = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs() as u32;
         for s in 0..=360 {
             if create_recovery_token(curr_time - s) == token {

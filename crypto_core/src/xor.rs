@@ -20,7 +20,7 @@ impl std::error::Error for XorError {}
 
 /// XOR two blocks of data together
 /// ```
-/// use rusty_pals::xor::xor_blocks;
+/// use crypto_core::xor::xor_blocks;
 /// assert_eq!(xor_blocks("abc", "def").unwrap(), [5, 7, 5]);
 /// ```
 pub fn xor_blocks(a: impl AsRef<[u8]>, b: impl AsRef<[u8]>) -> Result<Vec<u8>, XorError> {
@@ -39,7 +39,7 @@ pub fn xor_blocks(a: impl AsRef<[u8]>, b: impl AsRef<[u8]>) -> Result<Vec<u8>, X
 
 /// XOR two blocks of data, writing the result into an output slice
 /// ```
-/// use rusty_pals::xor::xor_blocks_into;
+/// use crypto_core::xor::xor_blocks_into;
 /// let mut out = vec![0; 3];
 /// assert!(xor_blocks_into("abc", "def", out.as_mut_slice()).is_ok());
 /// assert_eq!(out, [5, 7, 5]);
@@ -72,7 +72,7 @@ pub fn xor_blocks_into(
 
 /// XOR two blocks of data, writing the result into the second block
 /// ```
-/// use rusty_pals::xor::xor_blocks_together;
+/// use crypto_core::xor::xor_blocks_together;
 /// let mut out = b"def".to_vec();
 /// assert!(xor_blocks_together("abc", out.as_mut_slice()).is_ok());
 /// assert_eq!(out, [5, 7, 5]);
@@ -94,7 +94,7 @@ pub fn xor_blocks_together(a: impl AsRef<[u8]>, b: &mut [u8]) -> Result<(), XorE
 
 /// XOR a block of data with a key
 /// ```
-/// use rusty_pals::xor::xor_with_key;
+/// use crypto_core::xor::xor_with_key;
 /// assert_eq!(xor_with_key("abc", "a").unwrap(), [0, 3, 2]);
 /// ```
 pub fn xor_with_key(data: impl AsRef<[u8]>, key: impl AsRef<[u8]>) -> Result<Vec<u8>, XorError> {
@@ -116,7 +116,7 @@ pub fn xor_with_key(data: impl AsRef<[u8]>, key: impl AsRef<[u8]>) -> Result<Vec
 
 /// XOR a block of data with a key, into an output slice
 /// ```
-/// use rusty_pals::xor::xor_with_key_into;
+/// use crypto_core::xor::xor_with_key_into;
 /// let data = "abcdef";
 /// let key = "db";
 /// let mut out = vec![0; data.len()];
@@ -151,7 +151,7 @@ pub fn xor_with_key_into(
 
 /// Use SIMD to accelerate XORing a 16 byte block
 /// ```
-/// use rusty_pals::xor::xor_block_simd;
+/// use crypto_core::xor::xor_block_simd;
 /// let block_1 = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
 /// let block_2 = [15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0];
 /// let xorred = unsafe { xor_block_simd(&block_1, &block_2) };
@@ -171,7 +171,7 @@ pub fn xor_block_simd(a: &[u8; 16], b: &[u8; 16]) -> [u8; 16] {
 
 /// Use SIMD to accelerate XORing a 16 byte block, into another
 /// ```
-/// use rusty_pals::xor::xor_block_simd_into;
+/// use crypto_core::xor::xor_block_simd_into;
 /// let block_1 = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
 /// let mut block_2 = [15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0];
 /// unsafe { xor_block_simd_into(&block_1, &mut block_2) };

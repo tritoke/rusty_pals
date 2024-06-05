@@ -8,7 +8,7 @@ const TABLE: [u8; 64] = *b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0
 
 /// Implements Base64 encoding based on RFC4648
 /// ```
-/// use rusty_pals::encoding::{Encodable, b64encode};
+/// use crypto_core::encoding::{Encodable, b64encode};
 /// assert_eq!(b64encode("foobar"), "Zm9vYmFy");
 /// assert_eq!(b"foobar".encode_b64() , "Zm9vYmFy");
 /// ```
@@ -47,7 +47,7 @@ pub fn b64encode(input: impl AsRef<[u8]>) -> String {
 
 /// Implements Base64 decoding based on RFC4648
 /// ```
-/// use rusty_pals::encoding::{Decodable, b64decode};
+/// use crypto_core::encoding::{Decodable, b64decode};
 /// assert_eq!(b64decode("Zm9vYmFy").unwrap(), b"foobar");
 /// assert_eq!("Zm9vYmFy".decode_b64().unwrap(), b"foobar");
 /// ```

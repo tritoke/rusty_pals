@@ -3,7 +3,7 @@ use crate::util::try_cast_as_arrays;
 
 /// Parse an input string as encoding
 /// ```
-/// use rusty_pals::encoding::parse_hex;
+/// use crypto_core::encoding::parse_hex;
 /// assert_eq!(parse_hex("1234").unwrap(), &[0x12, 0x34]);
 /// ```
 pub fn parse_hex(input: &str) -> Result<Vec<u8>, DecodingError> {
@@ -15,7 +15,7 @@ pub fn parse_hex(input: &str) -> Result<Vec<u8>, DecodingError> {
 
 /// Turn a slice of bytes into a hex encoded string
 /// ```
-/// use rusty_pals::encoding::{Encodable, to_hex};
+/// use crypto_core::encoding::{Encodable, to_hex};
 /// assert_eq!(to_hex([0x12, 0x34, 0x56, 0x78]), "12345678");
 /// assert_eq!([0x12, 0x34, 0x56, 0x78].encode_hex(), "12345678");
 /// ```

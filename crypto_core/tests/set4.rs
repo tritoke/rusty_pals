@@ -1,5 +1,8 @@
-use rusty_pals::xor::XorError;
+use crypto_core::xor::XorError;
 use std::string::FromUtf8Error;
+
+mod helpers;
+use helpers::*;
 
 #[derive(Debug, Clone)]
 pub enum ChallengeError {
@@ -7,33 +10,16 @@ pub enum ChallengeError {
     FromUtf8Error(FromUtf8Error),
 }
 
-impl std::fmt::Display for ChallengeError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{self:?}")
-    }
-}
-
-impl std::error::Error for ChallengeError {}
-
-impl From<XorError> for ChallengeError {
-    fn from(value: XorError) -> Self {
-        Self::XorError(value)
-    }
-}
-
-impl From<FromUtf8Error> for ChallengeError {
-    fn from(value: FromUtf8Error) -> Self {
-        Self::FromUtf8Error(value)
-    }
-}
+impl_error_boilerplate!(ChallengeError);
+impl_error_from_types!(ChallengeError: XorError, FromUtf8Error);
 
 pub type ChallengeResult<T> = Result<T, ChallengeError>;
 
 mod chall25 {
     use crate::ChallengeResult;
-    use rusty_pals::crypto::aes::{decrypt, encrypt, Aes128, Iv, Mode};
-    use rusty_pals::rand::{Rng32, XorShift32};
-    use rusty_pals::xor::{xor_blocks, xor_with_key};
+    use crypto_core::crypto::aes::{decrypt, encrypt, Aes128, Iv, Mode};
+    use crypto_core::rand::{Rng32, XorShift32};
+    use crypto_core::xor::{xor_blocks, xor_with_key};
 
     #[derive(Debug)]
     struct Challenge {
@@ -85,9 +71,9 @@ mod chall25 {
 
 mod chall26 {
     use crate::ChallengeResult;
-    use rusty_pals::crypto::aes::{decrypt, encrypt, Aes128, Mode};
-    use rusty_pals::rand::{Rng32, XorShift32};
-    use rusty_pals::util::cast_as_array;
+    use crypto_core::crypto::aes::{decrypt, encrypt, Aes128, Mode};
+    use crypto_core::rand::{Rng32, XorShift32};
+    use crypto_core::util::cast_as_array;
     use std::io::Write;
     use std::mem;
 
@@ -163,13 +149,13 @@ mod chall26 {
 }
 
 mod chall27 {
-    use rusty_pals::crypto::{
+    use crypto_core::crypto::{
         aes::{decrypt, encrypt, Aes, Aes128, Mode},
         pad,
     };
-    use rusty_pals::rand::{Rng32, XorShift32};
-    use rusty_pals::util::cast_as_arrays;
-    use rusty_pals::xor::xor_block_simd;
+    use crypto_core::rand::{Rng32, XorShift32};
+    use crypto_core::util::cast_as_arrays;
+    use crypto_core::xor::xor_block_simd;
     use std::io::Write;
     use std::string::FromUtf8Error;
 
@@ -229,8 +215,8 @@ mod chall27 {
 }
 
 mod chall28 {
-    use rusty_pals::crypto::{sha1::Sha1, Hasher};
-    use rusty_pals::rand::{Rng32, XorShift32};
+    use crypto_core::crypto::{sha1::Sha1, Hasher};
+    use crypto_core::rand::{Rng32, XorShift32};
     use std::marker::PhantomData;
 
     pub(super) struct Challenge<H: Hasher> {
@@ -276,7 +262,7 @@ mod chall28 {
 
 mod chall29 {
     use super::chall28::Challenge;
-    use rusty_pals::crypto::{sha1::Sha1, Hasher};
+    use crypto_core::crypto::{sha1::Sha1, Hasher};
 
     type Digest = <Sha1 as Hasher>::Digest;
 
@@ -324,7 +310,7 @@ mod chall29 {
 
 mod chall30 {
     use super::chall28::Challenge;
-    use rusty_pals::crypto::{md4::Md4, Hasher};
+    use crypto_core::crypto::{md4::Md4, Hasher};
 
     type Digest = <Md4 as Hasher>::Digest;
 
@@ -371,9 +357,9 @@ mod chall30 {
 }
 
 mod chall31 {
-    use rusty_pals::crypto::hmac::Hmac;
-    use rusty_pals::crypto::sha1::{Digest, Sha1};
-    use rusty_pals::rand::{Rng32, XorShift32};
+    use crypto_core::crypto::hmac::Hmac;
+    use crypto_core::crypto::sha1::{Digest, Sha1};
+    use crypto_core::rand::{Rng32, XorShift32};
     use std::time::Duration;
 
     struct Challenge {
@@ -450,9 +436,9 @@ mod chall31 {
 }
 
 mod chall32 {
-    use rusty_pals::crypto::hmac::Hmac;
-    use rusty_pals::crypto::sha1::{Digest, Sha1};
-    use rusty_pals::rand::{Rng32, XorShift32};
+    use crypto_core::crypto::hmac::Hmac;
+    use crypto_core::crypto::sha1::{Digest, Sha1};
+    use crypto_core::rand::{Rng32, XorShift32};
     use std::time::Duration;
 
     const COMPARE_TIME: Duration = Duration::from_millis(5);

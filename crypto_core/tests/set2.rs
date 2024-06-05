@@ -1,11 +1,14 @@
-use rusty_pals::crypto::pad::PaddingError;
-use rusty_pals::crypto::{
+use crypto_core::crypto::pad::PaddingError;
+use crypto_core::crypto::{
     aes::{decrypt, Aes128, Mode},
     pad,
 };
-use rusty_pals::encoding::{Decodable, DecodingError};
-use rusty_pals::xor::XorError;
+use crypto_core::encoding::{Decodable, DecodingError};
+use crypto_core::xor::XorError;
 use std::str::Utf8Error;
+
+mod helpers;
+use helpers::*;
 
 #[derive(Debug, Clone)]
 pub enum ChallengeError {
@@ -16,43 +19,9 @@ pub enum ChallengeError {
     Custom(String),
 }
 
-impl std::fmt::Display for ChallengeError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{self:?}")
-    }
-}
-
-impl std::error::Error for ChallengeError {}
-
-impl From<DecodingError> for ChallengeError {
-    fn from(value: DecodingError) -> Self {
-        Self::DecodingError(value)
-    }
-}
-
-impl From<XorError> for ChallengeError {
-    fn from(value: XorError) -> Self {
-        Self::XorError(value)
-    }
-}
-
-impl From<PaddingError> for ChallengeError {
-    fn from(value: PaddingError) -> Self {
-        Self::PaddingError(value)
-    }
-}
-
-impl From<Utf8Error> for ChallengeError {
-    fn from(value: Utf8Error) -> Self {
-        Self::Utf8Error(value)
-    }
-}
-
-impl From<String> for ChallengeError {
-    fn from(value: String) -> Self {
-        Self::Custom(value)
-    }
-}
+impl_error_boilerplate!(ChallengeError);
+impl_error_from_types!(ChallengeError: DecodingError, XorError, PaddingError, Utf8Error);
+impl_error_from_type!(ChallengeError: String => Custom);
 
 pub type ChallengeResult<T> = Result<T, ChallengeError>;
 
@@ -81,13 +50,13 @@ fn challenge10() -> ChallengeResult<()> {
 
 mod chal11 {
     use super::ChallengeResult;
-    use rusty_pals::crypto::aes::Iv;
-    use rusty_pals::crypto::{
+    use crypto_core::crypto::aes::Iv;
+    use crypto_core::crypto::{
         aes::{encrypt, Aes, Aes128, Mode},
         pad,
     };
-    use rusty_pals::rand::{Rng32, XorShift32};
-    use rusty_pals::util::{self, cast_as_arrays};
+    use crypto_core::rand::{Rng32, XorShift32};
+    use crypto_core::util::{self, cast_as_arrays};
 
     fn encryption_oracle(
         rng: &mut XorShift32,
@@ -140,12 +109,12 @@ mod chal11 {
 
 mod chal12 {
     use super::ChallengeResult;
-    use rusty_pals::crypto::aes::{encrypt, Aes, Aes128, Iv, Mode};
-    use rusty_pals::crypto::oracle::EncryptionOracle;
-    use rusty_pals::crypto::pad;
-    use rusty_pals::encoding::Decodable;
-    use rusty_pals::rand::{Rng32, XorShift32};
-    use rusty_pals::util::{cast_as_array, cast_as_arrays};
+    use crypto_core::crypto::aes::{encrypt, Aes, Aes128, Iv, Mode};
+    use crypto_core::crypto::oracle::EncryptionOracle;
+    use crypto_core::crypto::pad;
+    use crypto_core::encoding::Decodable;
+    use crypto_core::rand::{Rng32, XorShift32};
+    use crypto_core::util::{cast_as_array, cast_as_arrays};
     use std::collections::{HashMap, HashSet, VecDeque};
 
     #[test]
@@ -304,10 +273,10 @@ mod chal12 {
 mod chal13 {
     use super::ChallengeResult;
     use crate::ChallengeError;
-    use rusty_pals::crypto::aes::{decrypt, encrypt, Aes, Aes128, Iv, Mode};
-    use rusty_pals::crypto::pad::{pkcs7_into, pkcs7_unpad_owned};
-    use rusty_pals::encoding::Encodable;
-    use rusty_pals::rand::{Rng32, XorShift32};
+    use crypto_core::crypto::aes::{decrypt, encrypt, Aes, Aes128, Iv, Mode};
+    use crypto_core::crypto::pad::{pkcs7_into, pkcs7_unpad_owned};
+    use crypto_core::encoding::Encodable;
+    use crypto_core::rand::{Rng32, XorShift32};
     use std::fmt;
     use std::fmt::{Formatter, Write};
     use std::str::FromStr;
@@ -502,15 +471,15 @@ mod chal13 {
 mod chal14 {
     use super::chal12::PrefixMapper;
     use super::ChallengeResult;
-    use rusty_pals::crypto::aes::Iv;
-    use rusty_pals::crypto::{
+    use crypto_core::crypto::aes::Iv;
+    use crypto_core::crypto::{
         aes::{encrypt, Aes, Aes128, Mode},
         oracle::EncryptionOracle,
         pad,
     };
-    use rusty_pals::encoding::Decodable;
-    use rusty_pals::rand::{Rng32, XorShift32};
-    use rusty_pals::util::{cast_as_array, cast_as_arrays};
+    use crypto_core::encoding::Decodable;
+    use crypto_core::rand::{Rng32, XorShift32};
+    use crypto_core::util::{cast_as_array, cast_as_arrays};
     use std::collections::VecDeque;
 
     #[derive(Debug)]
@@ -688,12 +657,12 @@ fn challenge15() {
 
 mod chall16 {
     use super::ChallengeResult;
-    use rusty_pals::crypto::{
+    use crypto_core::crypto::{
         aes::{decrypt, encrypt, Aes, Aes128, Mode},
         pad,
     };
-    use rusty_pals::rand::{Rng32, XorShift32};
-    use rusty_pals::util::cast_as_array;
+    use crypto_core::rand::{Rng32, XorShift32};
+    use crypto_core::util::cast_as_array;
     use std::io::Write;
 
     #[derive(Debug)]

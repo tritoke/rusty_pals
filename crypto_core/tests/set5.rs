@@ -1,10 +1,10 @@
 #![allow(non_snake_case)]
 
-use rusty_pals::bignum::nist::{NIST_G, NIST_P};
-use rusty_pals::bignum::Bignum;
-use rusty_pals::rand::{Rng32, XorShift32};
-// a bigint type big enough to handle modexp for NIST's p value
-type Bigint = Bignum<48>;
+use crypto_core::bignum::nist::{NIST_G, NIST_P};
+use crypto_core::bignum::Bignum;
+use crypto_core::rand::{Rng32, XorShift32};
+
+type U1536 = Bignum<24>;
 
 #[test]
 fn challenge33_small() {
@@ -38,8 +38,8 @@ fn challenge33_small() {
 fn challenge33_big() {
     let mut rng = XorShift32::new();
 
-    let a = Bigint::random(&mut rng) % NIST_P;
-    let b = Bigint::random(&mut rng) % NIST_P;
+    let a = U1536::random(&mut rng) % NIST_P;
+    let b = U1536::random(&mut rng) % NIST_P;
     let A = NIST_G.modexp(a, NIST_P);
     let B = NIST_G.modexp(b, NIST_P);
 
@@ -49,8 +49,8 @@ fn challenge33_big() {
     assert_eq!(K_a, K_b);
 }
 
-mod chall24 {
-    use rusty_pals::{
+mod chall34 {
+    use crypto_core::{
         crypto::{
             aes::{self, Aes, Aes128, Iv},
             pad::{pkcs7, pkcs7_unpad_owned},
@@ -64,14 +64,14 @@ mod chall24 {
 
     #[derive(Debug, Clone)]
     struct Initial {
-        pub_key: Bigint,
-        generator: Bigint,
-        modulus: Bigint,
+        pub_key: U1536,
+        generator: U1536,
+        modulus: U1536,
     }
 
     #[derive(Debug, Clone)]
     struct ResponsePublicKey {
-        key: Bigint,
+        key: U1536,
     }
 
     #[derive(Debug, Clone)]
@@ -92,11 +92,11 @@ mod chall24 {
     }
 
     struct Honest {
-        priv_key: Bigint,
+        priv_key: U1536,
         shared_secret: Option<Aes128>,
     }
 
-    fn compute_enc_key(shared_key: Bigint) -> Aes128 {
+    fn compute_enc_key(shared_key: U1536) -> Aes128 {
         let mut hasher = Sha1::new();
         hasher.update(shared_key);
         hasher.finalize();
@@ -106,7 +106,7 @@ mod chall24 {
 
     impl Party for Honest {
         fn new(rng: impl Rng32) -> Self {
-            let priv_key = Bigint::random(rng);
+            let priv_key = U1536::random(rng);
 
             Self {
                 priv_key,
@@ -163,7 +163,7 @@ mod chall24 {
     impl Party for Malicious {
         fn new(_rng: impl Rng32) -> Self {
             Self {
-                key: compute_enc_key(Bigint::ZERO),
+                key: compute_enc_key(U1536::ZERO),
             }
         }
 
@@ -250,8 +250,8 @@ mod chall24 {
     }
 }
 
-mod chall25 {
-    use rusty_pals::{
+mod chall35 {
+    use crypto_core::{
         crypto::{
             aes::{self, Aes, Aes128, Iv},
             pad::{pkcs7, pkcs7_unpad_owned},
@@ -265,8 +265,8 @@ mod chall25 {
 
     #[derive(Debug, Clone)]
     struct Initial {
-        generator: Bigint,
-        modulus: Bigint,
+        generator: U1536,
+        modulus: U1536,
     }
 
     #[derive(Debug, Clone)]
@@ -274,7 +274,7 @@ mod chall25 {
 
     #[derive(Debug, Clone)]
     struct ResponsePublicKey {
-        key: Bigint,
+        key: U1536,
     }
 
     #[derive(Debug, Clone)]
@@ -297,13 +297,13 @@ mod chall25 {
     }
 
     struct Honest {
-        priv_key: Bigint,
-        generator: Option<Bigint>,
-        modulus: Option<Bigint>,
+        priv_key: U1536,
+        generator: Option<U1536>,
+        modulus: Option<U1536>,
         shared_secret: Option<Aes128>,
     }
 
-    fn compute_enc_key(shared_key: Bigint) -> Aes128 {
+    fn compute_enc_key(shared_key: U1536) -> Aes128 {
         let mut hasher = Sha1::new();
         hasher.update(shared_key);
         hasher.finalize();
@@ -313,7 +313,7 @@ mod chall25 {
 
     impl Party for Honest {
         fn new(rng: impl Rng32) -> Self {
-            let priv_key = Bigint::random(rng);
+            let priv_key = U1536::random(rng);
 
             Self {
                 priv_key,
@@ -386,12 +386,12 @@ mod chall25 {
     }
 
     // struct Malicious {
-    //     generator: Bigint,
+    //     generator: U1536,
     //     key: Aes128,
     // }
 
     // impl Party for Malicious {
-    //     fn new(generator: Bigint) -> Self {
+    //     fn new(generator: U1536) -> Self {
     //         Self {
     //             generator,
     //             key: todo!(),

@@ -1,11 +1,14 @@
-use rusty_pals::crypto::aes::*;
-use rusty_pals::crypto::pad::*;
-use rusty_pals::encoding::*;
-use rusty_pals::fit::*;
-use rusty_pals::xor::*;
+use crypto_core::crypto::aes::*;
+use crypto_core::crypto::pad::*;
+use crypto_core::encoding::*;
+use crypto_core::fit::*;
+use crypto_core::xor::*;
 
-use rusty_pals::util;
-use rusty_pals::util::cast_as_arrays;
+use crypto_core::util;
+use crypto_core::util::cast_as_arrays;
+
+mod helpers;
+use helpers::*;
 
 #[derive(Debug, Copy, Clone)]
 pub enum ChallengeError {
@@ -14,31 +17,8 @@ pub enum ChallengeError {
     PaddingError(PaddingError),
 }
 
-impl std::fmt::Display for ChallengeError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{self:?}")
-    }
-}
-
-impl std::error::Error for ChallengeError {}
-
-impl From<DecodingError> for ChallengeError {
-    fn from(value: DecodingError) -> Self {
-        Self::DecodingError(value)
-    }
-}
-
-impl From<XorError> for ChallengeError {
-    fn from(value: XorError) -> Self {
-        Self::XorError(value)
-    }
-}
-
-impl From<PaddingError> for ChallengeError {
-    fn from(value: PaddingError) -> Self {
-        Self::PaddingError(value)
-    }
-}
+impl_error_boilerplate!(ChallengeError);
+impl_error_from_types!(ChallengeError: DecodingError, XorError, PaddingError);
 
 pub type ChallengeResult<T> = Result<T, ChallengeError>;
 
