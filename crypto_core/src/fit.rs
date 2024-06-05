@@ -1,4 +1,4 @@
-/// A count of the ASCII letters from https://m.gutenberg.org/ebooks/15
+/// A count of the ASCII letters from <https://m.gutenberg.org/ebooks/15>
 /// by ASCII I mean character values 0-127
 const ASCII_COUNTS: [u32; 128] = [
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 22627, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,

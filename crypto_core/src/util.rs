@@ -32,7 +32,7 @@ where
     false
 }
 
-/// [T]::as_chunks isn't stable yet, so I wrote my own :)
+/// \[T\]::as_chunks isn't stable yet, so I wrote my own :)
 pub fn as_chunks<T, const N: usize>(slice: &[T]) -> (&[[T; N]], &[T]) {
     // SAFETY: len * N is always less than or equal to slice.len()
     // len * N is also always guaranteed to be divisible by N
@@ -44,7 +44,7 @@ pub fn as_chunks<T, const N: usize>(slice: &[T]) -> (&[[T; N]], &[T]) {
     (arrays, remainder)
 }
 
-/// [T]::as_chunks_mut isn't stable yet, so I wrote my own :)
+/// \[T\]::as_chunks_mut isn't stable yet, so I wrote my own :)
 pub fn as_chunks_mut<T, const N: usize>(slice: &mut [T]) -> (&mut [[T; N]], &mut [T]) {
     // SAFETY: len * N is always less than or equal to slice.len()
     // len * N is also always guaranteed to be divisible by N

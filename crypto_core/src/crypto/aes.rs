@@ -20,7 +20,7 @@ pub enum Mode {
     CTR,
 }
 
-/// Helpers derived from https://www.intel.com/content/dam/develop/external/us/en/documents/aes-wp-2012-09-22-v01-165683.pdf
+/// Helpers derived from <https://www.intel.com/content/dam/develop/external/us/en/documents/aes-wp-2012-09-22-v01-165683.pdf>
 #[allow(clippy::needless_late_init)]
 mod helpers {
     use std::arch::x86_64::*;
@@ -257,13 +257,13 @@ pub trait AesKeySchedule {
     fn round_key(&self, round: usize) -> __m128i;
 }
 
-impl<T: AesKeySchedule> AesKeySchedule for &T {
-    const ROUNDS: usize = Self::ROUNDS;
+// impl<T: AesKeySchedule> AesKeySchedule for &T {
+//     const ROUNDS: usize = Self::ROUNDS;
 
-    fn round_key(&self, round: usize) -> __m128i {
-        (*self).round_key(round)
-    }
-}
+//     fn round_key(&self, round: usize) -> __m128i {
+//         (*self).round_key(round)
+//     }
+// }
 
 #[derive(Debug, Copy, Clone)]
 pub struct Aes128 {

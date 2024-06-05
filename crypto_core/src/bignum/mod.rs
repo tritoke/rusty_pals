@@ -1,6 +1,6 @@
 #![allow(clippy::clone_on_copy)]
 
-//! THE BIBLE: https://cacr.uwaterloo.ca/hac/about/chap14.pdf
+//! THE BIBLE: <https://cacr.uwaterloo.ca/hac/about/chap14.pdf>
 
 use crate::rand::Rng32;
 use std::fmt;
