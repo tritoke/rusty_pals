@@ -200,10 +200,10 @@ impl<const LIMBS: usize> Bignum<LIMBS> {
         out
     }
 
-    /// Raise self to the power exponent remainder prime
-    pub fn modexp(self, exponent: Self, prime: Self) -> Self {
+    /// Raise self to the power exponent remainder modulus
+    pub fn modexp(self, exponent: Self, modulus: Self) -> Self {
         debug_assert!(self.bit_length() <= LIMBS as u32 * 32);
-        debug_assert!(prime.bit_length() <= LIMBS as u32 * 32);
+        debug_assert!(modulus.bit_length() <= LIMBS as u32 * 32);
 
         if exponent.is_zero() {
             return Bignum::ONE;
@@ -213,12 +213,12 @@ impl<const LIMBS: usize> Bignum<LIMBS> {
         let mut y = Bignum::ONE;
         for i in 0..(exponent.bit_length() as usize - 1) {
             if exponent.test_bit(i) {
-                y = (y * x) % prime;
+                y = (y * x) % modulus;
             }
-            x = (x * x) % prime;
+            x = (x * x) % modulus;
         }
 
-        (x * y) % prime
+        (x * y) % modulus
     }
 
     /// Generate a uniformly random Bignum from Bignum::MIN to Bignum::MAX inclusive

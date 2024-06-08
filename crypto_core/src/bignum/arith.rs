@@ -6,8 +6,6 @@ use std::ops::{
 
 use crate::bignum::Bignum;
 
-use super::wide::WideBignum;
-
 // we dont have nightly but i can steal from nightly >:)
 #[inline]
 pub(super) const fn carrying_add(x: u64, y: u64, carry: bool) -> (u64, bool) {

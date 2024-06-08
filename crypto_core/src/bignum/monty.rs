@@ -124,6 +124,12 @@ impl<const LIMBS: usize> MontyForm<LIMBS> {
 
         *self = out;
     }
+
+    pub fn pow(&self, exponent: &Bignum<LIMBS>) -> Self {
+        let mut out = self.clone();
+        out.exponentation(exponent);
+        out
+    }
 }
 
 impl<const LIMBS: usize> From<MontyForm<LIMBS>> for Bignum<LIMBS> {

@@ -1,10 +1,48 @@
 #![allow(non_snake_case)]
 
+use std::rc::Rc;
+
 use crypto_core::bignum::nist::{NIST_G, NIST_P};
-use crypto_core::bignum::Bignum;
+use crypto_core::bignum::{Bignum, MontyForm, MontyInfo};
+use crypto_core::crypto::aes::Aes128;
+use crypto_core::crypto::sha1::Sha1;
+use crypto_core::crypto::Hasher as _;
 use crypto_core::rand::{Rng32, XorShift32};
+use crypto_core::util::cast_as_array;
 
 type U1536 = Bignum<24>;
+type Context = Rc<MontyInfo<24>>;
+type M1536 = MontyForm<24>;
+
+#[derive(Debug, Clone)]
+struct Group {
+    generator: M1536,
+    context: Context,
+}
+
+impl Group {
+    fn gen_keypair(&self, rng: impl Rng32) -> (U1536, M1536) {
+        let a = U1536::random(rng);
+        let A = self.generator.pow(&a);
+        (a, A)
+    }
+}
+
+impl Default for Group {
+    fn default() -> Self {
+        let context = Rc::new(MontyInfo::new(NIST_P));
+        let generator = M1536::new(&NIST_G, context.clone());
+        Self { generator, context }
+    }
+}
+
+fn compute_enc_key(shared_key: U1536) -> Aes128 {
+    let mut hasher = Sha1::new();
+    hasher.update(shared_key);
+    hasher.finalize();
+    let digest = hasher.digest();
+    Aes128::new(cast_as_array(&digest.as_ref()[..16]))
+}
 
 #[test]
 fn challenge33_small() {
@@ -37,41 +75,34 @@ fn challenge33_small() {
 #[test]
 fn challenge33_big() {
     let mut rng = XorShift32::new();
+    let group = Group::default();
 
-    let a = U1536::random(&mut rng) % NIST_P;
-    let b = U1536::random(&mut rng) % NIST_P;
-    let A = NIST_G.modexp(a, NIST_P);
-    let B = NIST_G.modexp(b, NIST_P);
+    let (a, A) = group.gen_keypair(&mut rng);
+    let (b, B) = group.gen_keypair(&mut rng);
 
-    let K_a = B.modexp(a, NIST_P);
-    let K_b = A.modexp(b, NIST_P);
+    let K_a = B.pow(&a);
+    let K_b = A.pow(&b);
 
     assert_eq!(K_a, K_b);
 }
 
 mod chall34 {
-    use crypto_core::{
-        crypto::{
-            aes::{self, Aes, Aes128, Iv},
-            pad::{pkcs7, pkcs7_unpad_owned},
-            sha1::Sha1,
-            Hasher,
-        },
-        util::cast_as_array,
+    use crypto_core::crypto::{
+        aes::{self, Aes, Iv},
+        pad::{pkcs7, pkcs7_unpad_owned},
     };
 
     use super::*;
 
     #[derive(Debug, Clone)]
     struct Initial {
-        pub_key: U1536,
-        generator: U1536,
-        modulus: U1536,
+        pub_key: M1536,
+        group: Group,
     }
 
     #[derive(Debug, Clone)]
     struct ResponsePublicKey {
-        key: U1536,
+        key: M1536,
     }
 
     #[derive(Debug, Clone)]
@@ -96,14 +127,6 @@ mod chall34 {
         shared_secret: Option<Aes128>,
     }
 
-    fn compute_enc_key(shared_key: U1536) -> Aes128 {
-        let mut hasher = Sha1::new();
-        hasher.update(shared_key);
-        hasher.finalize();
-        let digest = hasher.digest();
-        Aes128::new(cast_as_array(&digest.as_ref()[..16]))
-    }
-
     impl Party for Honest {
         fn new(rng: impl Rng32) -> Self {
             let priv_key = U1536::random(rng);
@@ -115,26 +138,26 @@ mod chall34 {
         }
 
         fn init(&mut self) -> Initial {
+            let group = Group::default();
             Initial {
-                generator: NIST_G,
-                modulus: NIST_P,
-                pub_key: NIST_G.modexp(self.priv_key, NIST_P),
+                pub_key: group.generator.pow(&self.priv_key),
+                group,
             }
         }
 
         fn resp_pub(&mut self, init: Initial) -> ResponsePublicKey {
-            let pub_key = init.generator.modexp(self.priv_key, init.modulus);
-            let shared_key = init.pub_key.modexp(self.priv_key, init.modulus);
+            let pub_key = init.group.generator.pow(&self.priv_key);
+            let shared_key = init.pub_key.pow(&self.priv_key);
 
-            self.shared_secret = Some(compute_enc_key(shared_key));
+            self.shared_secret = Some(compute_enc_key(shared_key.into()));
 
             ResponsePublicKey { key: pub_key }
         }
 
         fn recv_pub(&mut self, resp_pub: ResponsePublicKey) {
-            let shared_key = resp_pub.key.modexp(self.priv_key, NIST_P);
+            let shared_key = resp_pub.key.pow(&self.priv_key);
 
-            self.shared_secret = Some(compute_enc_key(shared_key));
+            self.shared_secret = Some(compute_enc_key(shared_key.into()));
         }
 
         fn enc(&self, msg: &[u8]) -> EncMessage {
@@ -168,15 +191,17 @@ mod chall34 {
         }
 
         fn init(&mut self) -> Initial {
+            let group = Group::default();
             Initial {
-                pub_key: NIST_P,
-                generator: NIST_G,
-                modulus: NIST_P,
+                pub_key: M1536::new(&Bignum::ZERO, group.context.clone()),
+                group,
             }
         }
 
-        fn resp_pub(&mut self, _init: Initial) -> ResponsePublicKey {
-            ResponsePublicKey { key: NIST_P }
+        fn resp_pub(&mut self, init: Initial) -> ResponsePublicKey {
+            ResponsePublicKey {
+                key: M1536::new(&Bignum::ZERO, init.group.context),
+            }
         }
 
         fn recv_pub(&mut self, _resp: ResponsePublicKey) {}
@@ -250,257 +275,258 @@ mod chall34 {
     }
 }
 
-mod chall35 {
-    use crypto_core::{
-        crypto::{
-            aes::{self, Aes, Aes128, Iv},
-            pad::{pkcs7, pkcs7_unpad_owned},
-            sha1::Sha1,
-            Hasher,
-        },
-        util::cast_as_array,
-    };
+// mod chall35 {
+//     use crypto_core::{
+//         crypto::{
+//             aes::{self, Aes, Aes128, Iv},
+//             pad::{pkcs7, pkcs7_unpad_owned},
+//             sha1::Sha1,
+//             Hasher,
+//         },
+//         util::cast_as_array,
+//     };
 
-    use super::*;
+//     use super::*;
 
-    #[derive(Debug, Clone)]
-    struct Initial {
-        generator: U1536,
-        modulus: U1536,
-    }
+//     #[derive(Debug, Clone)]
+//     struct Initial {
+//         generator: U1536,
+//         modulus: U1536,
+//     }
 
-    #[derive(Debug, Clone)]
-    struct Ack;
+//     #[derive(Debug, Clone)]
+//     struct Ack;
 
-    #[derive(Debug, Clone)]
-    struct ResponsePublicKey {
-        key: U1536,
-    }
+//     #[derive(Debug, Clone)]
+//     struct ResponsePublicKey {
+//         key: U1536,
+//     }
 
-    #[derive(Debug, Clone)]
-    struct EncMessage {
-        iv: Iv,
-        message: Vec<u8>,
-    }
+//     #[derive(Debug, Clone)]
+//     struct EncMessage {
+//         iv: Iv,
+//         message: Vec<u8>,
+//     }
 
-    trait Party {
-        fn new(rng: impl Rng32) -> Self;
+//     trait Party {
+//         fn new(rng: impl Rng32) -> Self;
 
-        fn init(&mut self) -> Initial;
-        fn ack(&mut self, init: Initial) -> Ack;
-        fn send_pub(&mut self, ack: Ack) -> ResponsePublicKey;
-        fn reply_pub(&mut self, resp_pub: ResponsePublicKey) -> ResponsePublicKey;
-        fn recv_pub(&mut self, resp_pub: ResponsePublicKey);
+//         fn init(&mut self) -> Initial;
+//         fn ack(&mut self, init: Initial) -> Ack;
+//         fn send_pub(&mut self, ack: Ack) -> ResponsePublicKey;
+//         fn reply_pub(&mut self, resp_pub: ResponsePublicKey) -> ResponsePublicKey;
+//         fn recv_pub(&mut self, resp_pub: ResponsePublicKey);
 
-        fn enc(&self, msg: &[u8]) -> EncMessage;
-        fn dec(&self, enc_msg: EncMessage) -> Vec<u8>;
-    }
+//         fn enc(&self, msg: &[u8]) -> EncMessage;
+//         fn dec(&self, enc_msg: EncMessage) -> Vec<u8>;
+//     }
 
-    struct Honest {
-        priv_key: U1536,
-        generator: Option<U1536>,
-        modulus: Option<U1536>,
-        shared_secret: Option<Aes128>,
-    }
+//     struct Honest {
+//         priv_key: U1536,
+//         generator: Option<M1536>,
+//         context: Option<Context>,
+//         shared_secret: Option<Aes128>,
+//     }
 
-    fn compute_enc_key(shared_key: U1536) -> Aes128 {
-        let mut hasher = Sha1::new();
-        hasher.update(shared_key);
-        hasher.finalize();
-        let digest = hasher.digest();
-        Aes128::new(cast_as_array(&digest.as_ref()[..16]))
-    }
+//     fn compute_enc_key(shared_key: U1536) -> Aes128 {
+//         let mut hasher = Sha1::new();
+//         hasher.update(shared_key);
+//         hasher.finalize();
+//         let digest = hasher.digest();
+//         Aes128::new(cast_as_array(&digest.as_ref()[..16]))
+//     }
 
-    impl Party for Honest {
-        fn new(rng: impl Rng32) -> Self {
-            let priv_key = U1536::random(rng);
+//     impl Party for Honest {
+//         fn new(rng: impl Rng32) -> Self {
+//             let priv_key = U1536::random(rng);
 
-            Self {
-                priv_key,
-                generator: None,
-                modulus: None,
-                shared_secret: None,
-            }
-        }
+//             Self {
+//                 priv_key,
+//                 generator: None,
+//                 context: None,
+//                 shared_secret: None,
+//             }
+//         }
 
-        fn init(&mut self) -> Initial {
-            self.generator = Some(NIST_G);
-            self.modulus = Some(NIST_P);
+//         fn init(&mut self) -> Initial {
+//             self.context = Some(Rc::new())
+//             self.generator = Some(NIST_G);
+//             self.modulus = Some(NIST_P);
 
-            Initial {
-                generator: NIST_G,
-                modulus: NIST_P,
-            }
-        }
+//             Initial {
+//                 generator: NIST_G,
+//                 modulus: NIST_P,
+//             }
+//         }
 
-        fn ack(&mut self, init: Initial) -> Ack {
-            self.modulus = Some(init.modulus);
-            self.generator = Some(init.generator);
+//         fn ack(&mut self, init: Initial) -> Ack {
+//             self.modulus = Some(init.modulus);
+//             self.generator = Some(init.generator);
 
-            Ack
-        }
+//             Ack
+//         }
 
-        fn send_pub(&mut self, _ack: Ack) -> ResponsePublicKey {
-            let pub_key = self
-                .generator
-                .unwrap()
-                .modexp(self.priv_key, self.modulus.unwrap());
+//         fn send_pub(&mut self, _ack: Ack) -> ResponsePublicKey {
+//             let pub_key = self
+//                 .generator
+//                 .unwrap()
+//                 .modexp(self.priv_key, self.modulus.unwrap());
 
-            ResponsePublicKey { key: pub_key }
-        }
+//             ResponsePublicKey { key: pub_key }
+//         }
 
-        fn reply_pub(&mut self, resp_pub: ResponsePublicKey) -> ResponsePublicKey {
-            let shared_key = resp_pub.key.modexp(self.priv_key, self.modulus.unwrap());
-            self.shared_secret = Some(compute_enc_key(shared_key));
+//         fn reply_pub(&mut self, resp_pub: ResponsePublicKey) -> ResponsePublicKey {
+//             let shared_key = resp_pub.key.modexp(self.priv_key, self.modulus.unwrap());
+//             self.shared_secret = Some(compute_enc_key(shared_key));
 
-            let pub_key = self
-                .generator
-                .unwrap()
-                .modexp(self.priv_key, self.modulus.unwrap());
+//             let pub_key = self
+//                 .generator
+//                 .unwrap()
+//                 .modexp(self.priv_key, self.modulus.unwrap());
 
-            ResponsePublicKey { key: pub_key }
-        }
+//             ResponsePublicKey { key: pub_key }
+//         }
 
-        fn recv_pub(&mut self, resp_pub: ResponsePublicKey) {
-            let shared_key = resp_pub.key.modexp(self.priv_key, self.modulus.unwrap());
-            self.shared_secret = Some(compute_enc_key(shared_key));
-        }
+//         fn recv_pub(&mut self, resp_pub: ResponsePublicKey) {
+//             let shared_key = resp_pub.key.modexp(self.priv_key, self.modulus.unwrap());
+//             self.shared_secret = Some(compute_enc_key(shared_key));
+//         }
 
-        fn enc(&self, msg: &[u8]) -> EncMessage {
-            let mut rng = XorShift32::new();
+//         fn enc(&self, msg: &[u8]) -> EncMessage {
+//             let mut rng = XorShift32::new();
 
-            let padded = pkcs7(msg, Aes128::BLOCK_SIZE as u8);
-            let iv = Iv::Block(rng.gen_array());
-            let enc = aes::encrypt(padded, self.shared_secret.unwrap(), iv, aes::Mode::CBC);
+//             let padded = pkcs7(msg, Aes128::BLOCK_SIZE as u8);
+//             let iv = Iv::Block(rng.gen_array());
+//             let enc = aes::encrypt(padded, self.shared_secret.unwrap(), iv, aes::Mode::CBC);
 
-            EncMessage { iv, message: enc }
-        }
+//             EncMessage { iv, message: enc }
+//         }
 
-        fn dec(&self, enc_msg: EncMessage) -> Vec<u8> {
-            let EncMessage { iv, message: enc } = enc_msg;
+//         fn dec(&self, enc_msg: EncMessage) -> Vec<u8> {
+//             let EncMessage { iv, message: enc } = enc_msg;
 
-            let mut dec = aes::decrypt(enc, self.shared_secret.unwrap(), iv, aes::Mode::CBC);
-            pkcs7_unpad_owned(&mut dec).unwrap();
-            dec
-        }
-    }
+//             let mut dec = aes::decrypt(enc, self.shared_secret.unwrap(), iv, aes::Mode::CBC);
+//             pkcs7_unpad_owned(&mut dec).unwrap();
+//             dec
+//         }
+//     }
 
-    // struct Malicious {
-    //     generator: U1536,
-    //     key: Aes128,
-    // }
+//     // struct Malicious {
+//     //     generator: U1536,
+//     //     key: Aes128,
+//     // }
 
-    // impl Party for Malicious {
-    //     fn new(generator: U1536) -> Self {
-    //         Self {
-    //             generator,
-    //             key: todo!(),
-    //         }
-    //     }
+//     // impl Party for Malicious {
+//     //     fn new(generator: U1536) -> Self {
+//     //         Self {
+//     //             generator,
+//     //             key: todo!(),
+//     //         }
+//     //     }
 
-    //     fn init(&mut self) -> Initial {
-    //         Initial {
-    //             generator: self.generator,
-    //             modulus: NIST_P,
-    //         }
-    //     }
+//     //     fn init(&mut self) -> Initial {
+//     //         Initial {
+//     //             generator: self.generator,
+//     //             modulus: NIST_P,
+//     //         }
+//     //     }
 
-    //     fn ack(&mut self, init: Initial) -> Ack {
-    //         unimplemented!()
-    //     }
+//     //     fn ack(&mut self, init: Initial) -> Ack {
+//     //         unimplemented!()
+//     //     }
 
-    //     fn send_pub(&mut self, _ack: Ack) -> ResponsePublicKey {
-    //         let pub_key = self
-    //             .generator
-    //             .modexp(self.priv_key, self.modulus.unwrap());
+//     //     fn send_pub(&mut self, _ack: Ack) -> ResponsePublicKey {
+//     //         let pub_key = self
+//     //             .generator
+//     //             .modexp(self.priv_key, self.modulus.unwrap());
 
-    //         ResponsePublicKey { key: pub_key }
-    //     }
+//     //         ResponsePublicKey { key: pub_key }
+//     //     }
 
-    //     fn reply_pub(&mut self, resp_pub: ResponsePublicKey) -> ResponsePublicKey {
-    //         let shared_key = resp_pub.key.modexp(self.priv_key, self.modulus.unwrap());
-    //         self.shared_secret = Some(compute_enc_key(shared_key));
+//     //     fn reply_pub(&mut self, resp_pub: ResponsePublicKey) -> ResponsePublicKey {
+//     //         let shared_key = resp_pub.key.modexp(self.priv_key, self.modulus.unwrap());
+//     //         self.shared_secret = Some(compute_enc_key(shared_key));
 
-    //         let pub_key = self
-    //             .generator
-    //             .unwrap()
-    //             .modexp(self.priv_key, self.modulus.unwrap());
+//     //         let pub_key = self
+//     //             .generator
+//     //             .unwrap()
+//     //             .modexp(self.priv_key, self.modulus.unwrap());
 
-    //         ResponsePublicKey { key: pub_key }
-    //     }
+//     //         ResponsePublicKey { key: pub_key }
+//     //     }
 
-    //     fn recv_pub(&mut self, resp_pub: ResponsePublicKey) {
-    //         let shared_key = resp_pub.key.modexp(self.priv_key, self.modulus.unwrap());
-    //         self.shared_secret = Some(compute_enc_key(shared_key));
-    //     }
+//     //     fn recv_pub(&mut self, resp_pub: ResponsePublicKey) {
+//     //         let shared_key = resp_pub.key.modexp(self.priv_key, self.modulus.unwrap());
+//     //         self.shared_secret = Some(compute_enc_key(shared_key));
+//     //     }
 
-    //     fn enc(&self, msg: &[u8]) -> EncMessage {
-    //         let mut rng = XorShift32::new();
+//     //     fn enc(&self, msg: &[u8]) -> EncMessage {
+//     //         let mut rng = XorShift32::new();
 
-    //         let padded = pkcs7(msg, Aes128::BLOCK_SIZE as u8);
-    //         let iv = Iv::Block(rng.gen_array());
-    //         let enc = aes::encrypt(padded, self.shared_secret.unwrap(), iv, aes::Mode::CBC);
+//     //         let padded = pkcs7(msg, Aes128::BLOCK_SIZE as u8);
+//     //         let iv = Iv::Block(rng.gen_array());
+//     //         let enc = aes::encrypt(padded, self.shared_secret.unwrap(), iv, aes::Mode::CBC);
 
-    //         EncMessage { iv, message: enc }
-    //     }
+//     //         EncMessage { iv, message: enc }
+//     //     }
 
-    //     fn dec(&self, enc_msg: EncMessage) -> Vec<u8> {
-    //         let EncMessage { iv, message: enc } = enc_msg;
+//     //     fn dec(&self, enc_msg: EncMessage) -> Vec<u8> {
+//     //         let EncMessage { iv, message: enc } = enc_msg;
 
-    //         let mut dec = aes::decrypt(enc, self.shared_secret.unwrap(), iv, aes::Mode::CBC);
-    //         pkcs7_unpad_owned(&mut dec).unwrap();
-    //         dec
-    //     }
-    // }
+//     //         let mut dec = aes::decrypt(enc, self.shared_secret.unwrap(), iv, aes::Mode::CBC);
+//     //         pkcs7_unpad_owned(&mut dec).unwrap();
+//     //         dec
+//     //     }
+//     // }
 
-    fn diffie_hellman<A: Party, B: Party>(msg: &[u8], mut rng: impl Rng32) {
-        let mut a = A::new(&mut rng);
-        let mut b = B::new(&mut rng);
+//     fn diffie_hellman<A: Party, B: Party>(msg: &[u8], mut rng: impl Rng32) {
+//         let mut a = A::new(&mut rng);
+//         let mut b = B::new(&mut rng);
 
-        let init = a.init();
-        let ack = b.ack(init);
-        let a_pub = a.send_pub(ack);
-        let b_pub = b.reply_pub(a_pub);
-        a.recv_pub(b_pub);
+//         let init = a.init();
+//         let ack = b.ack(init);
+//         let a_pub = a.send_pub(ack);
+//         let b_pub = b.reply_pub(a_pub);
+//         a.recv_pub(b_pub);
 
-        let a_to_a = a.dec(a.enc(msg));
-        let a_to_b = a.dec(b.enc(msg));
-        let b_to_a = b.dec(a.enc(msg));
-        let b_to_b = b.dec(b.enc(msg));
+//         let a_to_a = a.dec(a.enc(msg));
+//         let a_to_b = a.dec(b.enc(msg));
+//         let b_to_a = b.dec(a.enc(msg));
+//         let b_to_b = b.dec(b.enc(msg));
 
-        assert_eq!(a_to_a, msg);
-        assert_eq!(a_to_b, msg);
-        assert_eq!(b_to_a, msg);
-        assert_eq!(b_to_b, msg);
-    }
+//         assert_eq!(a_to_a, msg);
+//         assert_eq!(a_to_b, msg);
+//         assert_eq!(b_to_a, msg);
+//         assert_eq!(b_to_b, msg);
+//     }
 
-    // fn mitm<A: Party, B: Party, M: Party>(msg: &[u8], mut rng: impl Rng32) {
-    //     let mut a = A::new(&mut rng);
-    //     let mut b = B::new(&mut rng);
-    //     let mut m = M::new(&mut rng);
+//     // fn mitm<A: Party, B: Party, M: Party>(msg: &[u8], mut rng: impl Rng32) {
+//     //     let mut a = A::new(&mut rng);
+//     //     let mut b = B::new(&mut rng);
+//     //     let mut m = M::new(&mut rng);
 
-    //     let a_init = a.init();
-    //     let m_init = m.init();
+//     //     let a_init = a.init();
+//     //     let m_init = m.init();
 
-    //     let m_resp = m.resp_pub(a_init);
-    //     a.recv_pub(m_resp);
+//     //     let m_resp = m.resp_pub(a_init);
+//     //     a.recv_pub(m_resp);
 
-    //     let b_resp = b.resp_pub(m_init);
-    //     m.recv_pub(b_resp);
+//     //     let b_resp = b.resp_pub(m_init);
+//     //     m.recv_pub(b_resp);
 
-    //     let a_enc = a.enc(msg);
-    //     let m_dec = m.dec(a_enc.clone());
-    //     let b_dec = b.dec(a_enc);
+//     //     let a_enc = a.enc(msg);
+//     //     let m_dec = m.dec(a_enc.clone());
+//     //     let b_dec = b.dec(a_enc);
 
-    //     assert_eq!(m_dec, msg);
-    //     assert_eq!(b_dec, msg);
-    // }
+//     //     assert_eq!(m_dec, msg);
+//     //     assert_eq!(b_dec, msg);
+//     // }
 
-    #[test]
-    fn challenge34() {
-        let mut rng = XorShift32::new();
+//     #[test]
+//     fn challenge35() {
+//         let mut rng = XorShift32::new();
 
-        diffie_hellman::<Honest, Honest>(b"My name is jeff and I love to eat socks", &mut rng);
-        // mitm::<Honest, Honest, Malicious>(b"My name is socks and I love to eat jeff", &mut rng);
-    }
-}
+//         diffie_hellman::<Honest, Honest>(b"My name is jeff and I love to eat socks", &mut rng);
+//         // mitm::<Honest, Honest, Malicious>(b"My name is socks and I love to eat jeff", &mut rng);
+//     }
+// }
