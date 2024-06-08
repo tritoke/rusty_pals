@@ -81,7 +81,6 @@ fn main() -> Result<()> {
         fname => Box::new(
             OpenOptions::new()
                 .write(true)
-                .create(true)
                 .create_new(!args.force)
                 .open(fname)
                 .with_context(|| format!("Opening {fname:?} for writing output."))?,
