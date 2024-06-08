@@ -3,7 +3,7 @@ use super::Bignum;
 /// A double wide bignum used to store the result of operations that have a double wide result
 /// For example multiplcation / squaring
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
-pub(super) struct WideBignum<const LIMBS: usize> {
+pub struct WideBignum<const LIMBS: usize> {
     /// The most significant half of the number
     hi: Bignum<LIMBS>,
     /// The least significant half of the number
