@@ -31,6 +31,10 @@ impl<const LIMBS: usize> MontyInfo<LIMBS> {
         }
     }
 
+    pub fn modulus(&self) -> &Bignum<LIMBS> {
+        &self.m
+    }
+
     fn montgomery_reduction(&self, mut n: WideBignum<LIMBS>) -> Bignum<LIMBS> {
         // keep track of the carry past the end of the current multiply-accumulate
         let mut final_add_carry = false;
