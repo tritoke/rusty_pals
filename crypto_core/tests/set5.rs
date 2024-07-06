@@ -532,3 +532,28 @@ mod chall35 {
         mitm::<Honest, Malicious<1>>(b"My name is socks and I love to eat jeff", &mut rng);
     }
 }
+
+// mod chall36 {
+//     use super::*;
+
+//     const IDENTITY: &[u8] = b"jeffery.bezos@feetfinder.com";
+//     const PASSWORD: &[u8] = b"I lovveeeee socks";
+
+//     struct SrpServer {
+//         salt: [u8; 16],
+//         verifier: M1536,
+//     }
+
+//     impl SrpServer {
+//         fn new(mut rng: impl Rng32) {
+//             let group = Group::default();
+//             let salt = rng.gen_array();
+
+//             // let mut hasher = Sha256
+
+//             Self { salt, verifier }
+//         }
+//     }
+
+//     struct SrpClient {}
+// }

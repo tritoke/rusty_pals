@@ -282,7 +282,7 @@ impl Sha1 {
         for &x in w.iter().take(20) {
             temp = a
                 .rotate_left(5)
-                .wrapping_add(b & c | !b & d)
+                .wrapping_add(b & c ^ !b & d)
                 .wrapping_add(e)
                 .wrapping_add(x)
                 .wrapping_add(K[0]);

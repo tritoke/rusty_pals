@@ -4,6 +4,7 @@ pub mod md4;
 pub mod oracle;
 pub mod pad;
 pub mod sha1;
+pub mod sha2;
 
 pub trait Hasher {
     type Digest: AsRef<[u8]>;
