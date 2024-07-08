@@ -1,5 +1,3 @@
-// #![deny(missing_docs)]
-
 pub mod bignum;
 pub mod crypto;
 pub mod encoding;
