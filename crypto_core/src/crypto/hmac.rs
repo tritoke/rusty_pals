@@ -62,7 +62,7 @@ impl<H: Hasher> Hmac<H> {
 #[cfg(test)]
 mod tests {
     use crate::crypto::hmac::Hmac;
-    use crate::crypto::sha1::Sha1;
+    use crate::crypto::shs::Sha1;
     use crate::encoding::Decodable;
 
     #[test]

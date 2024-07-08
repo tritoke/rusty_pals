@@ -5,7 +5,7 @@ use std::rc::Rc;
 use crypto_core::bignum::nist::{NIST_G, NIST_P};
 use crypto_core::bignum::{Bignum, MontyForm, MontyInfo};
 use crypto_core::crypto::aes::Aes128;
-use crypto_core::crypto::sha1::Sha1;
+use crypto_core::crypto::shs::Sha1;
 use crypto_core::crypto::Hasher as _;
 use crypto_core::rand::{Rng32, XorShift32};
 use crypto_core::util::cast_as_array;

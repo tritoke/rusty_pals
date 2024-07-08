@@ -1,5 +1,6 @@
-use crypto_core::xor::XorError;
 use std::string::FromUtf8Error;
+
+use crypto_core::xor::XorError;
 
 mod helpers;
 use helpers::*;
@@ -14,6 +15,16 @@ impl_error_boilerplate!(ChallengeError);
 impl_error_from_types!(ChallengeError: XorError, FromUtf8Error);
 
 pub type ChallengeResult<T> = Result<T, ChallengeError>;
+
+#[repr(align(4))]
+#[derive(Clone, Copy)]
+struct AlignedBytes([u8; 20]);
+
+impl From<AlignedBytes> for crypto_core::crypto::shs::Sha1Digest {
+    fn from(bytes: AlignedBytes) -> Self {
+        Self(unsafe { std::mem::transmute(bytes) })
+    }
+}
 
 mod chall25 {
     use crate::ChallengeResult;
@@ -215,7 +226,8 @@ mod chall27 {
 }
 
 mod chall28 {
-    use crypto_core::crypto::{sha1::Sha1, Hasher};
+    use crypto_core::crypto::shs::Sha1Digest;
+    use crypto_core::crypto::{shs::Sha1, Hasher};
     use crypto_core::rand::{Rng32, XorShift32};
     use std::marker::PhantomData;
 
@@ -256,13 +268,13 @@ mod chall28 {
         assert!(chall.is_message_valid(&data, mac));
         data[5] = b'1';
         assert!(!chall.is_message_valid(&data, mac));
-        assert!(!chall.is_message_valid(&data, [1, 2, 3, 4, 5].into()));
+        assert!(!chall.is_message_valid(&data, Sha1Digest([1, 2, 3, 4, 5])));
     }
 }
 
 mod chall29 {
     use super::chall28::Challenge;
-    use crypto_core::crypto::{sha1::Sha1, Hasher};
+    use crypto_core::crypto::{shs::Sha1, Hasher};
 
     type Digest = <Sha1 as Hasher>::Digest;
 
@@ -357,8 +369,9 @@ mod chall30 {
 }
 
 mod chall31 {
+    use super::AlignedBytes;
     use crypto_core::crypto::hmac::Hmac;
-    use crypto_core::crypto::sha1::{Digest, Sha1};
+    use crypto_core::crypto::shs::{Sha1, Sha1Digest};
     use crypto_core::rand::{Rng32, XorShift32};
     use std::time::Duration;
 
@@ -393,7 +406,7 @@ mod chall31 {
             (equal, time_slept)
         }
 
-        fn challenge(&self, file: &[u8], signature: Digest) -> (u32, Duration) {
+        fn challenge(&self, file: &[u8], signature: Sha1Digest) -> (u32, Duration) {
             let mac = self.hmacer.mac(file);
             let (equal, duration) = Self::insecure_compare(mac.as_ref(), signature.as_ref());
             if equal {
@@ -404,21 +417,21 @@ mod chall31 {
         }
     }
 
-    fn attack(chall: &Challenge, data: &[u8]) -> Digest {
-        let mut recovered = [0u8; 20];
+    fn attack(chall: &Challenge, data: &[u8]) -> Sha1Digest {
+        let mut recovered = AlignedBytes([0u8; 20]);
 
-        for i in 0..recovered.len() {
+        for i in 0..recovered.0.len() {
             let (byte, _time) = (u8::MIN..=u8::MAX)
                 .map(|b| {
-                    recovered[i] = b;
-                    (b, chall.challenge(data, Digest(recovered)).1)
+                    recovered.0[i] = b;
+                    (b, chall.challenge(data, Sha1Digest::from(recovered)).1)
                 })
                 .max_by_key(|(_, cmp_time)| *cmp_time)
                 .expect("Max on non-empty iterator always returns a value");
-            recovered[i] = byte;
+            recovered.0[i] = byte;
         }
 
-        Digest(recovered)
+        Sha1Digest::from(recovered)
     }
 
     #[test]
@@ -436,8 +449,9 @@ mod chall31 {
 }
 
 mod chall32 {
+    use super::AlignedBytes;
     use crypto_core::crypto::hmac::Hmac;
-    use crypto_core::crypto::sha1::{Digest, Sha1};
+    use crypto_core::crypto::shs::{Sha1, Sha1Digest};
     use crypto_core::rand::{Rng32, XorShift32};
     use std::time::Duration;
 
@@ -473,7 +487,7 @@ mod chall32 {
             (equal, time_slept)
         }
 
-        fn challenge(&self, file: &[u8], signature: Digest) -> (u32, Duration) {
+        fn challenge(&self, file: &[u8], signature: Sha1Digest) -> (u32, Duration) {
             let mac = self.hmacer.mac(file);
             let (equal, duration) = Self::insecure_compare(mac.as_ref(), signature.as_ref());
             if equal {
@@ -484,17 +498,17 @@ mod chall32 {
         }
     }
 
-    fn attack<const N: usize>(chall: &Challenge, data: &[u8]) -> Digest {
-        let mut recovered = [0u8; 20];
+    fn attack<const N: usize>(chall: &Challenge, data: &[u8]) -> Sha1Digest {
+        let mut recovered = AlignedBytes([0u8; 20]);
 
-        for i in 0..recovered.len() {
-            recovered[i] = (u8::MIN..=u8::MAX)
+        for i in 0..recovered.0.len() {
+            recovered.0[i] = (u8::MIN..=u8::MAX)
                 .max_by_key(|&guess| {
-                    recovered[i] = guess;
+                    recovered.0[i] = guess;
 
                     // Collect N runs and see how well they correlate with the increased duration
                     let total_time = (0..N)
-                        .map(|_| chall.challenge(data, Digest(recovered)).1)
+                        .map(|_| chall.challenge(data, Sha1Digest::from(recovered)).1)
                         .sum::<Duration>();
 
                     total_time / N as u32
@@ -502,7 +516,7 @@ mod chall32 {
                 .expect("Max on non-empty iterator always returns a value");
         }
 
-        Digest(recovered)
+        Sha1Digest::from(recovered)
     }
 
     #[test]
