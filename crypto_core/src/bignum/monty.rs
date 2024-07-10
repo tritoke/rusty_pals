@@ -80,6 +80,14 @@ impl<const LIMBS: usize> MontyForm<LIMBS> {
         Self { info, inner }
     }
 
+    pub fn info(&self) -> Rc<MontyInfo<LIMBS>> {
+        self.info.clone()
+    }
+
+    pub fn inner(&self) -> &Bignum<LIMBS> {
+        &self.inner
+    }
+
     fn addition(&mut self, rhs: &Self) {
         debug_assert!(self.inner < self.info.m);
         debug_assert!(rhs.inner < self.info.m);

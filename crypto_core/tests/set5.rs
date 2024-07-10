@@ -533,27 +533,154 @@ mod chall35 {
     }
 }
 
-// mod chall36 {
-//     use super::*;
+mod chall36 {
+    use std::fmt::Write as _;
 
-//     const IDENTITY: &[u8] = b"jeffery.bezos@feetfinder.com";
-//     const PASSWORD: &[u8] = b"I lovveeeee socks";
+    use crypto_core::crypto::{
+        hmac::{self, Hmac},
+        shs::{Sha256, Sha256Digest},
+        Hasher,
+    };
 
-//     struct SrpServer {
-//         salt: [u8; 16],
-//         verifier: M1536,
-//     }
+    use super::*;
 
-//     impl SrpServer {
-//         fn new(mut rng: impl Rng32) {
-//             let group = Group::default();
-//             let salt = rng.gen_array();
+    type Salt = [u8; 16];
 
-//             // let mut hasher = Sha256
+    const IDENTITY: &[u8] = b"jeffery.bezos@feetfinder.com";
+    const PASSWORD: &[u8] = b"I lovveeeee socks";
 
-//             Self { salt, verifier }
-//         }
-//     }
+    struct SrpServer {
+        salt: Salt,
+        verifier: M1536,
+        shared_key: Option<Sha256Digest>,
+    }
 
-//     struct SrpClient {}
-// }
+    fn digest_to_bignum(digest: Sha256Digest) -> U1536 {
+        let mut s = String::new();
+        for word in digest.0 {
+            write!(&mut s, "{word:08x}").unwrap();
+        }
+
+        s.parse().expect("Failed to parse hex as number?")
+    }
+
+    impl SrpServer {
+        fn new() -> Self {
+            let group = Group::default();
+            let salt = XorShift32::new().gen_array();
+
+            let mut hasher = Sha256::new();
+            hasher.update(salt);
+            hasher.update(PASSWORD);
+            hasher.finalize();
+
+            let xH = hasher.digest();
+            let x = digest_to_bignum(xH);
+            let verifier = group.generator.pow(&x);
+
+            Self {
+                salt,
+                verifier,
+                shared_key: None,
+            }
+        }
+
+        fn recv_pub(
+            &mut self,
+            identity: impl AsRef<[u8]>,
+            client_pub: M1536,
+        ) -> Option<(Salt, M1536)> {
+            if identity.as_ref() != IDENTITY {
+                return None;
+            }
+
+            let group = Group::default();
+            let ephemeral = group.gen_keypair(XorShift32::new());
+
+            let mut b_pub = MontyForm::new(&Bignum::from(3u64), self.verifier.info());
+            b_pub *= &self.verifier;
+            b_pub += ephemeral.public;
+
+            let mut hasher = Sha256::new();
+            hasher.update(client_pub.inner());
+            hasher.update(b_pub.inner());
+            hasher.finalize();
+
+            let u = digest_to_bignum(hasher.digest());
+            let secret_key = (client_pub * self.verifier.pow(&u)).pow(&ephemeral.private);
+            hasher.reset();
+            hasher.update(secret_key.inner());
+            hasher.finalize();
+
+            self.shared_key = Some(hasher.digest());
+
+            Some((self.salt, b_pub))
+        }
+
+        fn validate_hmac(&self, mac: Sha256Digest) -> bool {
+            let hmac: Hmac<Sha256> = Hmac::new(self.shared_key.unwrap());
+            hmac.mac(self.salt) == mac
+        }
+    }
+
+    struct SrpClient {
+        keypair: KeyPair,
+        shared_key: Option<Sha256Digest>,
+    }
+
+    impl SrpClient {
+        fn new() -> Self {
+            Self {
+                keypair: Group::default().gen_keypair(XorShift32::new()),
+                shared_key: None,
+            }
+        }
+
+        fn send_pub(&self) -> (&[u8], M1536) {
+            (IDENTITY, self.keypair.public.clone())
+        }
+
+        fn recv_salt(&mut self, salt: Salt, mixed_pub: M1536) -> Sha256Digest {
+            let group = Group::default();
+
+            let mut hasher = Sha256::new();
+            hasher.update(salt);
+            hasher.update(PASSWORD);
+            hasher.finalize();
+
+            let x = digest_to_bignum(hasher.digest());
+
+            hasher.reset();
+            hasher.update(self.keypair.public.inner());
+            hasher.update(mixed_pub.inner());
+            hasher.finalize();
+
+            let u = digest_to_bignum(hasher.digest());
+
+            let k = MontyForm::new(&Bignum::from(3u64), group.context);
+            let secret_key =
+                (mixed_pub - (k * group.generator.pow(&x))).pow(&(self.keypair.private + u * x));
+
+            hasher.reset();
+            hasher.update(secret_key.inner());
+            hasher.finalize();
+            let shared_key = hasher.digest();
+            self.shared_key = Some(shared_key);
+
+            let hmac: Hmac<Sha256> = Hmac::new(shared_key);
+            hmac.mac(salt)
+        }
+    }
+
+    #[test]
+    fn challenge36() {
+        let mut server = SrpServer::new();
+        let mut client = SrpClient::new();
+
+        let (I, A) = client.send_pub();
+        let (salt, B) = server.recv_pub(I, A).expect("Server rejected public key");
+        let hmac_K = client.recv_salt(salt, B);
+
+        assert!(server.validate_hmac(hmac_K))
+    }
+}
