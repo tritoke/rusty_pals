@@ -537,25 +537,25 @@ mod chall36 {
     use std::fmt::Write as _;
 
     use crypto_core::crypto::{
-        hmac::{self, Hmac},
+        hmac::Hmac,
         shs::{Sha256, Sha256Digest},
         Hasher,
     };
 
     use super::*;
 
-    type Salt = [u8; 16];
+    pub type Salt = [u8; 16];
 
-    const IDENTITY: &[u8] = b"jeffery.bezos@feetfinder.com";
-    const PASSWORD: &[u8] = b"I lovveeeee socks";
+    pub const IDENTITY: &[u8] = b"jeffery.bezos@feetfinder.com";
+    pub const PASSWORD: &[u8] = b"I lovveeeee socks";
 
-    struct SrpServer {
+    pub struct SrpServer {
         salt: Salt,
         verifier: M1536,
         shared_key: Option<Sha256Digest>,
     }
 
-    fn digest_to_bignum(digest: Sha256Digest) -> U1536 {
+    pub fn digest_to_bignum(digest: Sha256Digest) -> U1536 {
         let mut s = String::new();
         for word in digest.0 {
             write!(&mut s, "{word:08x}").unwrap();
@@ -565,7 +565,7 @@ mod chall36 {
     }
 
     impl SrpServer {
-        fn new() -> Self {
+        pub fn new() -> Self {
             let group = Group::default();
             let salt = XorShift32::new().gen_array();
 
@@ -585,7 +585,7 @@ mod chall36 {
             }
         }
 
-        fn recv_pub(
+        pub fn recv_pub(
             &mut self,
             identity: impl AsRef<[u8]>,
             client_pub: M1536,
@@ -617,7 +617,7 @@ mod chall36 {
             Some((self.salt, b_pub))
         }
 
-        fn validate_hmac(&self, mac: Sha256Digest) -> bool {
+        pub fn validate_hmac(&self, mac: Sha256Digest) -> bool {
             let hmac: Hmac<Sha256> = Hmac::new(self.shared_key.unwrap());
             hmac.mac(self.salt) == mac
         }
@@ -676,6 +676,52 @@ mod chall36 {
     fn challenge36() {
         let mut server = SrpServer::new();
         let mut client = SrpClient::new();
+
+        let (I, A) = client.send_pub();
+        let (salt, B) = server.recv_pub(I, A).expect("Server rejected public key");
+        let hmac_K = client.recv_salt(salt, B);
+
+        assert!(server.validate_hmac(hmac_K))
+    }
+}
+
+mod challenge37 {
+    use chall36::{digest_to_bignum, Salt, PASSWORD};
+    use crypto_core::crypto::{
+        hmac::Hmac,
+        shs::{Sha256, Sha256Digest},
+    };
+
+    use super::*;
+    use crate::chall36::{SrpServer, IDENTITY};
+
+    struct MaliciousSrpClient {}
+
+    impl MaliciousSrpClient {
+        fn new() -> Self {
+            Self {}
+        }
+
+        fn send_pub(&self) -> (&[u8], M1536) {
+            (IDENTITY, M1536::new(&U1536::ZERO, Group::default().context))
+        }
+
+        fn recv_salt(&mut self, salt: Salt, _mixed_pub: M1536) -> Sha256Digest {
+            let mut hasher = Sha256::new();
+            hasher.reset();
+            hasher.update(U1536::ZERO);
+            hasher.finalize();
+            let shared_key = hasher.digest();
+
+            let hmac: Hmac<Sha256> = Hmac::new(shared_key);
+            hmac.mac(salt)
+        }
+    }
+
+    #[test]
+    fn challenge37() {
+        let mut server = SrpServer::new();
+        let mut client = MaliciousSrpClient::new();
 
         let (I, A) = client.send_pub();
         let (salt, B) = server.recv_pub(I, A).expect("Server rejected public key");
