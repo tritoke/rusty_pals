@@ -782,10 +782,6 @@ mod challenge38 {
             let group = Group::default();
             let ephemeral = group.gen_keypair(XorShift32::new());
 
-            let mut b_pub = MontyForm::new(&Bignum::from(3u64), self.verifier.info());
-            b_pub *= &self.verifier;
-            b_pub += ephemeral.public;
-
             let mut hasher = Sha256::new();
             hasher.update(XorShift32::new().gen_array::<16>());
             hasher.finalize();
@@ -798,7 +794,7 @@ mod challenge38 {
 
             self.shared_key = Some(hasher.digest());
 
-            Some((self.salt, b_pub, u))
+            Some((self.salt, ephemeral.public, u))
         }
 
         pub fn validate_hmac(&self, mac: Sha256Digest) -> bool {
