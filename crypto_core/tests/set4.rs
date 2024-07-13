@@ -22,7 +22,7 @@ struct AlignedBytes([u8; 20]);
 
 impl From<AlignedBytes> for crypto_core::crypto::shs::Sha1Digest {
     fn from(bytes: AlignedBytes) -> Self {
-        Self(unsafe { std::mem::transmute(bytes) })
+        Self(unsafe { std::mem::transmute::<AlignedBytes, [u32; 5]>(bytes) })
     }
 }
 
