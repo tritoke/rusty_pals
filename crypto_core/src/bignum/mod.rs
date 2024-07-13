@@ -17,6 +17,9 @@ pub use wide::WideBignum;
 
 pub mod nist;
 
+mod primality;
+pub use primality::PrimalityTestResult;
+
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub struct Bignum<const LIMBS: usize> {
     limbs: [u64; LIMBS],
