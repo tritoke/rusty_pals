@@ -852,4 +852,95 @@ mod challenge38 {
 
         assert!(server.validate_hmac(hmac_K))
     }
+
+    struct MaliciousSrpServer {
+        client_pub: Option<M1536>,
+        salt: Salt,
+        keypair: KeyPair,
+        u: U1536,
+    }
+
+    impl MaliciousSrpServer {
+        fn new() -> Self {
+            let mut rng = XorShift32::new();
+            let group = Group::default();
+
+            let mut hasher = Sha256::new();
+            hasher.update(XorShift32::new().gen_array::<16>());
+            hasher.finalize();
+            let u = digest_to_bignum(hasher.digest());
+
+            Self {
+                client_pub: None,
+                salt: rng.gen_array(),
+                keypair: group.gen_keypair(&mut rng),
+                u,
+            }
+        }
+
+        fn recv_pub(
+            &mut self,
+            _identity: impl AsRef<[u8]>,
+            client_pub: M1536,
+        ) -> Option<(Salt, M1536, U1536)> {
+            self.client_pub = Some(client_pub);
+
+            Some((self.salt, self.keypair.public.clone(), self.u))
+        }
+
+        fn recover_password(&self, client_hmac: Sha256Digest) -> Vec<u8> {
+            let mut guess: Vec<u8> = vec![];
+            let mut hasher = Sha256::new();
+            let group = Group::default();
+
+            loop {
+                // increment the value of guess
+                let mut inc = false;
+                for c in guess.iter_mut() {
+                    if *c == b'z' {
+                        *c = b'a';
+                    } else {
+                        *c += 1;
+                        inc = true;
+                        break;
+                    }
+                }
+
+                if !inc {
+                    guess.push(b'a');
+                }
+
+                hasher.reset();
+                hasher.update(self.salt);
+                hasher.update(&guess);
+                hasher.finalize();
+                let x = digest_to_bignum(hasher.digest());
+                let verifier = group.generator.pow(&x);
+
+                let secret_key = (self.client_pub.as_ref().unwrap() * verifier.pow(&self.u))
+                    .pow(&self.keypair.private);
+
+                hasher.reset();
+                hasher.update(secret_key.inner());
+                hasher.finalize();
+                let shared_key = hasher.digest();
+                let hmac: Hmac<Sha256> = Hmac::new(shared_key);
+                if hmac.mac(self.salt) == client_hmac {
+                    return guess;
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn challenge38() {
+        let mut server = MaliciousSrpServer::new();
+        let mut client = SimplifiedSrpClient::new();
+
+        let (I, A) = client.send_pub();
+        let (salt, B, u) = server.recv_pub(I, A).expect("Server rejected public key");
+        let hmac_K = client.recv_salt(salt, B, u);
+
+        assert_eq!(server.recover_password(hmac_K), PASSWORD);
+    }
 }
