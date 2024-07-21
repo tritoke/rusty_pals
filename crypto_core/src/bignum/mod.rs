@@ -180,7 +180,7 @@ impl<const LIMBS: usize> Bignum<LIMBS> {
         *self = self.divmod(rhs).1;
     }
 
-    /// Perform multiplaction into a wide result
+    /// Perform multipliction into a wide result
     pub fn mul_wide(&self, rhs: &Self) -> WideBignum<LIMBS> {
         let mut out = WideBignum::ZERO;
 
@@ -199,6 +199,41 @@ impl<const LIMBS: usize> Bignum<LIMBS> {
             }
             debug_assert_eq!(carry, 0);
         }
+
+        out
+    }
+
+    /// Perform squaring into a wide results
+    pub fn square_wide(&self) -> WideBignum<LIMBS> {
+        let mut out = WideBignum::ZERO;
+
+        let mut lagged_carry = false;
+        for i in 0..LIMBS {
+            let xi = self.limbs[i] as u128;
+            let wi = out.limb(i * 2) as u128;
+            let mut uv = wi + xi * xi;
+            *out.limb_mut(i * 2) = uv as u64;
+            let mut c = uv >> 64;
+            let mut carry = false;
+            for j in i + 1..LIMBS {
+                let xj = self.limbs[j] as u128;
+                let wij = out.limb(i + j) as u128;
+                let partial = xj * xi;
+
+                // split the computation into two which cannot overflow and combine handling the
+                // overflow
+
+                (uv, carry) =
+                    (wij + c + partial).overflowing_add(partial + ((carry as u128) << 64));
+                *out.limb_mut(i + j) = uv as u64;
+                c = uv >> 64;
+            }
+
+            *out.limb_mut(i + LIMBS) = c as u64 + lagged_carry as u64;
+            lagged_carry = carry;
+        }
+
+        debug_assert!(!lagged_carry);
 
         out
     }
@@ -703,6 +738,31 @@ mod tests {
         let a: Bignum<10> = Bignum::MAX;
         let b: Bignum<10> = Bignum::MAX;
         let (hi, lo) = a.mul_wide(&b).split();
+        assert!(lo.is_one());
+        assert_eq!(hi, Bignum::MAX - Bignum::from(1_u8));
+    }
+
+    #[test]
+    fn test_square_wide_bignums() {
+        let a: Bignum<10> = 5u8.into();
+        let (hi, lo) = a.square_wide().split();
+        assert_eq!(lo, 25u8.into());
+        assert!(hi.is_zero());
+
+        let a: Bignum<10> = Bignum {
+            limbs: [0, 1, 0, 0, 0, 0, 0, 0, 0, 0],
+        };
+        let (hi, lo) = a.square_wide().split();
+        assert_eq!(
+            lo,
+            Bignum {
+                limbs: [0, 0, 1, 0, 0, 0, 0, 0, 0, 0],
+            }
+        );
+        assert!(hi.is_zero());
+
+        let a: Bignum<10> = Bignum::MAX;
+        let (hi, lo) = a.square_wide().split();
         assert!(lo.is_one());
         assert_eq!(hi, Bignum::MAX - Bignum::from(1_u8));
     }

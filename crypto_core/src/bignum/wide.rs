@@ -165,11 +165,11 @@ impl<const LIMBS: usize> WideBignum<LIMBS> {
         lo
     }
 
-    pub fn limb(&self, idx: usize) -> &u64 {
+    pub fn limb(&self, idx: usize) -> u64 {
         if idx < LIMBS {
-            &self.lo.limbs[idx]
+            self.lo.limbs[idx]
         } else {
-            &self.hi.limbs[idx - LIMBS]
+            self.hi.limbs[idx - LIMBS]
         }
     }
 
