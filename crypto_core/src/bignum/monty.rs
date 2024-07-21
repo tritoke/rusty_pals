@@ -17,7 +17,7 @@ impl<const LIMBS: usize> MontyInfo<LIMBS> {
         r %= &modulus;
         r.add_with_overflow(&Bignum::from(1_u8));
 
-        let r2 = r.mul_wide(&r).remainder(&modulus);
+        let r2 = r.square_wide().remainder(&modulus);
         let b = Bignum::ONE << 64;
         let inv = modulus.inv_mod(&b);
         let m_inv = inv.limbs[0];
