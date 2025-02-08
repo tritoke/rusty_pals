@@ -1,6 +1,6 @@
 use crypto_core::crypto::pad::PaddingError;
 use crypto_core::crypto::{
-    aes::{decrypt, Aes128, Mode},
+    aes::{self, decrypt, Aes128, Mode},
     pad,
 };
 use crypto_core::encoding::{Decodable, DecodingError};
@@ -67,7 +67,7 @@ mod chal11 {
         let mut data = rng.gen_bytes(n_before);
         data.extend_from_slice(input.as_ref());
         data.extend_from_slice(&rng.gen_bytes(n_after));
-        pad::pkcs7_into(&mut data, Aes128::BLOCK_SIZE as u8);
+        pad::pkcs7_into(&mut data, aes::BLOCK_SIZE as u8);
 
         let key = Aes128::new(&rng.gen_array());
         let gen_ecb = rng.gen_bool();

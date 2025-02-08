@@ -116,8 +116,8 @@ fn challenge7() -> ChallengeResult<()> {
     let mut input = include_str!("files/7.txt").to_string();
     input.retain(|c| c != '\n');
     let data = b64decode(input)?;
-    let key = Aes128::new(b"YELLOW SUBMARINE");
-    let dec = decrypt(data, key, Iv::Empty, Mode::ECB);
+    let mut cipher = AesCipher::new(Aes128Key::new(b"YELLOW SUBMARINE"), EcbMode());
+    let dec = cipher.decrypt(&data);
     let unpad = pkcs7_unpad(&dec[..])?;
 
     assert_eq!(unpad, include_bytes!("files/7_correct.txt"));
