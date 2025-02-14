@@ -8,8 +8,6 @@ use std::{arch::x86_64::__m128i, mem};
 
 pub use modes::{CbcMode, CipherMode, CtrMode, EcbMode};
 
-use crate::encoding::Encodable;
-
 pub const BLOCK_SIZE: usize = 16;
 pub type Block = [u8; BLOCK_SIZE];
 
@@ -77,9 +75,6 @@ pub fn encrypt_block<const R: usize>(
     block: &[u8; 16],
     out_block: &mut [u8; 16],
 ) {
-    eprintln!("{:032x}", unsafe {
-        ::std::mem::transmute::<[u8; 16], u128>(*block)
-    });
     if has_hardware_aes_support() {
         // SAFETY: we have AES and SSE2 instructions present
         unsafe {
@@ -413,124 +408,200 @@ mod nist_tests {
             .decode_hex()
             .unwrap();
 
-        let mut ctr = CtrMode::new(0xf0f1f2f3f4f5f6f7);
-        ctr.seek(0xf8f9fafbfcfdfeff << 4);
-        let output = AesCipher::new(key, ctr).encrypt(&input);
-        assert_eq!(output, correct_output);
+        /* NIST and I count differently... */
+        let mut ctr = CtrMode::new(0xfffefdfcfbfaf9f8);
+        ctr.seek(0xf7f6f5f4f3f2f1f0 << 4);
+        let mut output = AesCipher::new(key, ctr).encrypt(&input[..BLOCK_SIZE]);
+        assert_eq!(output, correct_output[..BLOCK_SIZE]);
+
+        ctr = CtrMode::new(0x00fffdfcfbfaf9f8);
+        ctr.seek(0xf7f6f5f4f3f2f1f0 << 4);
+        output = AesCipher::new(key, ctr).encrypt(&input[BLOCK_SIZE..2 * BLOCK_SIZE]);
+        assert_eq!(output, correct_output[BLOCK_SIZE..2 * BLOCK_SIZE]);
+
+        ctr = CtrMode::new(0x01fffdfcfbfaf9f8);
+        ctr.seek(0xf7f6f5f4f3f2f1f0 << 4);
+        output = AesCipher::new(key, ctr).encrypt(&input[2 * BLOCK_SIZE..3 * BLOCK_SIZE]);
+        assert_eq!(output, correct_output[2 * BLOCK_SIZE..3 * BLOCK_SIZE]);
+
+        ctr = CtrMode::new(0x02fffdfcfbfaf9f8);
+        ctr.seek(0xf7f6f5f4f3f2f1f0 << 4);
+        output = AesCipher::new(key, ctr).encrypt(&input[3 * BLOCK_SIZE..4 * BLOCK_SIZE]);
+        assert_eq!(output, correct_output[3 * BLOCK_SIZE..4 * BLOCK_SIZE]);
     }
 
-    // #[test]
-    // fn test_aes_128_cbc_decryption() {
-    //     // NIST test vector F.2.2
-    //     let key = aes_128_key();
-    //     let iv: [u8; 16] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
+    #[test]
+    fn test_aes_128_ctr_decryption() {
+        // NIST test vector F.5.2
+        let key = aes_128_key();
 
-    //     let input = "7649abac8119b246cee98e9b12e9197d\
-    //                  5086cb9b507219ee95db113a917678b2\
-    //                  73bed6b8e3c1743b7116e69e22229516\
-    //                  3ff1caa1681fac09120eca307586e1a7"
-    //         .decode_hex()
-    //         .unwrap();
-    //     let correct_output = "6bc1bee22e409f96e93d7e117393172a\
-    //                           ae2d8a571e03ac9c9eb76fac45af8e51\
-    //                           30c81c46a35ce411e5fbc1191a0a52ef\
-    //                           f69f2445df4f9b17ad2b417be66c3710"
-    //         .decode_hex()
-    //         .unwrap();
+        let correct_output = plaintext();
+        let input = "874d6191b620e3261bef6864990db6ce\
+                     9806f66b7970fdff8617187bb9fffdff\
+                     5ae4df3edbd5d35e5b4f09020db03eab\
+                     1e031dda2fbe03d1792170a0f3009cee"
+            .decode_hex()
+            .unwrap();
 
-    //     let output = AesCipher::new(key, CbcMode::new(iv)).decrypt(&input);
-    //     assert_eq!(output, correct_output);
-    // }
+        /* NIST and I count differently... */
+        let mut ctr = CtrMode::new(0xfffefdfcfbfaf9f8);
+        ctr.seek(0xf7f6f5f4f3f2f1f0 << 4);
+        let mut output = AesCipher::new(key, ctr).decrypt(&input[..BLOCK_SIZE]);
+        assert_eq!(output, correct_output[..BLOCK_SIZE]);
 
-    // #[test]
-    // fn test_aes_192_cbc_encryption() {
-    //     // NIST test vector F.1.3
-    //     let key = aes_192_key();
-    //     let iv: [u8; 16] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
+        ctr = CtrMode::new(0x00fffdfcfbfaf9f8);
+        ctr.seek(0xf7f6f5f4f3f2f1f0 << 4);
+        output = AesCipher::new(key, ctr).decrypt(&input[BLOCK_SIZE..2 * BLOCK_SIZE]);
+        assert_eq!(output, correct_output[BLOCK_SIZE..2 * BLOCK_SIZE]);
 
-    //     let input = "6bc1bee22e409f96e93d7e117393172a\
-    //                  ae2d8a571e03ac9c9eb76fac45af8e51\
-    //                  30c81c46a35ce411e5fbc1191a0a52ef\
-    //                  f69f2445df4f9b17ad2b417be66c3710"
-    //         .decode_hex()
-    //         .unwrap();
-    //     let correct_output = "4f021db243bc633d7178183a9fa071e8\
-    //                           b4d9ada9ad7dedf4e5e738763f69145a\
-    //                           571b242012fb7ae07fa9baac3df102e0\
-    //                           08b0e27988598881d920a9e64f5615cd"
-    //         .decode_hex()
-    //         .unwrap();
+        ctr = CtrMode::new(0x01fffdfcfbfaf9f8);
+        ctr.seek(0xf7f6f5f4f3f2f1f0 << 4);
+        output = AesCipher::new(key, ctr).decrypt(&input[2 * BLOCK_SIZE..3 * BLOCK_SIZE]);
+        assert_eq!(output, correct_output[2 * BLOCK_SIZE..3 * BLOCK_SIZE]);
 
-    //     let output = AesCipher::new(key, CbcMode::new(iv)).encrypt(&input);
-    //     assert_eq!(output, correct_output);
-    // }
+        ctr = CtrMode::new(0x02fffdfcfbfaf9f8);
+        ctr.seek(0xf7f6f5f4f3f2f1f0 << 4);
+        output = AesCipher::new(key, ctr).decrypt(&input[3 * BLOCK_SIZE..4 * BLOCK_SIZE]);
+        assert_eq!(output, correct_output[3 * BLOCK_SIZE..4 * BLOCK_SIZE]);
+    }
 
-    // #[test]
-    // fn test_aes_192_cbc_decryption() {
-    //     // NIST test vector F.1.4
-    //     let key = aes_192_key();
-    //     let iv: [u8; 16] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
+    #[test]
+    fn test_aes_192_ctr_encryption() {
+        // NIST test vector F.5.3
+        let key = aes_192_key();
 
-    //     let correct_output = "6bc1bee22e409f96e93d7e117393172a\
-    //                           ae2d8a571e03ac9c9eb76fac45af8e51\
-    //                           30c81c46a35ce411e5fbc1191a0a52ef\
-    //                           f69f2445df4f9b17ad2b417be66c3710"
-    //         .decode_hex()
-    //         .unwrap();
-    //     let input = "4f021db243bc633d7178183a9fa071e8\
-    //                  b4d9ada9ad7dedf4e5e738763f69145a\
-    //                  571b242012fb7ae07fa9baac3df102e0\
-    //                  08b0e27988598881d920a9e64f5615cd"
-    //         .decode_hex()
-    //         .unwrap();
+        let input = plaintext();
+        let correct_output = "1abc932417521ca24f2b0459fe7e6e0b\
+                              090339ec0aa6faefd5ccc2c6f4ce8e94\
+                              1e36b26bd1ebc670d1bd1d665620abf7\
+                              4f78a7f6d29809585a97daec58c6b050"
+            .decode_hex()
+            .unwrap();
 
-    //     let output = AesCipher::new(key, CbcMode::new(iv)).decrypt(&input);
-    //     assert_eq!(output, correct_output);
-    // }
+        /* NIST and I count differently... */
+        let mut ctr = CtrMode::new(0xfffefdfcfbfaf9f8);
+        ctr.seek(0xf7f6f5f4f3f2f1f0 << 4);
+        let mut output = AesCipher::new(key, ctr).encrypt(&input[..BLOCK_SIZE]);
+        assert_eq!(output, correct_output[..BLOCK_SIZE]);
 
-    // #[test]
-    // fn test_aes_256_cbc_encryption() {
-    //     // NIST test vector F.1.5
-    //     let key = aes_256_key();
-    //     let iv: [u8; 16] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
+        ctr = CtrMode::new(0x00fffdfcfbfaf9f8);
+        ctr.seek(0xf7f6f5f4f3f2f1f0 << 4);
+        output = AesCipher::new(key, ctr).encrypt(&input[BLOCK_SIZE..2 * BLOCK_SIZE]);
+        assert_eq!(output, correct_output[BLOCK_SIZE..2 * BLOCK_SIZE]);
 
-    //     let input = "6bc1bee22e409f96e93d7e117393172a\
-    //                  ae2d8a571e03ac9c9eb76fac45af8e51\
-    //                  30c81c46a35ce411e5fbc1191a0a52ef\
-    //                  f69f2445df4f9b17ad2b417be66c3710"
-    //         .decode_hex()
-    //         .unwrap();
-    //     let correct_output = "f58c4c04d6e5f1ba779eabfb5f7bfbd6\
-    //                           9cfc4e967edb808d679f777bc6702c7d\
-    //                           39f23369a9d9bacfa530e26304231461\
-    //                           b2eb05e2c39be9fcda6c19078c6a9d1b"
-    //         .decode_hex()
-    //         .unwrap();
+        ctr = CtrMode::new(0x01fffdfcfbfaf9f8);
+        ctr.seek(0xf7f6f5f4f3f2f1f0 << 4);
+        output = AesCipher::new(key, ctr).encrypt(&input[2 * BLOCK_SIZE..3 * BLOCK_SIZE]);
+        assert_eq!(output, correct_output[2 * BLOCK_SIZE..3 * BLOCK_SIZE]);
 
-    //     let output = AesCipher::new(key, CbcMode::new(iv)).encrypt(&input);
-    //     assert_eq!(output, correct_output);
-    // }
+        ctr = CtrMode::new(0x02fffdfcfbfaf9f8);
+        ctr.seek(0xf7f6f5f4f3f2f1f0 << 4);
+        output = AesCipher::new(key, ctr).encrypt(&input[3 * BLOCK_SIZE..4 * BLOCK_SIZE]);
+        assert_eq!(output, correct_output[3 * BLOCK_SIZE..4 * BLOCK_SIZE]);
+    }
 
-    // #[test]
-    // fn test_aes_256_cbc_decryption() {
-    //     // NIST test vector F.1.6
-    //     let key = aes_256_key();
-    //     let iv: [u8; 16] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
+    #[test]
+    fn test_aes_192_ctr_decryption() {
+        // NIST test vector F.5.4
+        let key = aes_192_key();
 
-    //     let correct_output = "6bc1bee22e409f96e93d7e117393172a\
-    //                           ae2d8a571e03ac9c9eb76fac45af8e51\
-    //                           30c81c46a35ce411e5fbc1191a0a52ef\
-    //                           f69f2445df4f9b17ad2b417be66c3710"
-    //         .decode_hex()
-    //         .unwrap();
-    //     let input = "f58c4c04d6e5f1ba779eabfb5f7bfbd6\
-    //                  9cfc4e967edb808d679f777bc6702c7d\
-    //                  39f23369a9d9bacfa530e26304231461\
-    //                  b2eb05e2c39be9fcda6c19078c6a9d1b"
-    //         .decode_hex()
-    //         .unwrap();
+        let correct_output = plaintext();
+        let input = "1abc932417521ca24f2b0459fe7e6e0b\
+                     090339ec0aa6faefd5ccc2c6f4ce8e94\
+                     1e36b26bd1ebc670d1bd1d665620abf7\
+                     4f78a7f6d29809585a97daec58c6b050"
+            .decode_hex()
+            .unwrap();
 
-    //     let output = AesCipher::new(key, CbcMode::new(iv)).decrypt(&input);
-    //     assert_eq!(output, correct_output);
-    // }
+        /* NIST and I count differently... */
+        let mut ctr = CtrMode::new(0xfffefdfcfbfaf9f8);
+        ctr.seek(0xf7f6f5f4f3f2f1f0 << 4);
+        let mut output = AesCipher::new(key, ctr).decrypt(&input[..BLOCK_SIZE]);
+        assert_eq!(output, correct_output[..BLOCK_SIZE]);
+
+        ctr = CtrMode::new(0x00fffdfcfbfaf9f8);
+        ctr.seek(0xf7f6f5f4f3f2f1f0 << 4);
+        output = AesCipher::new(key, ctr).decrypt(&input[BLOCK_SIZE..2 * BLOCK_SIZE]);
+        assert_eq!(output, correct_output[BLOCK_SIZE..2 * BLOCK_SIZE]);
+
+        ctr = CtrMode::new(0x01fffdfcfbfaf9f8);
+        ctr.seek(0xf7f6f5f4f3f2f1f0 << 4);
+        output = AesCipher::new(key, ctr).decrypt(&input[2 * BLOCK_SIZE..3 * BLOCK_SIZE]);
+        assert_eq!(output, correct_output[2 * BLOCK_SIZE..3 * BLOCK_SIZE]);
+
+        ctr = CtrMode::new(0x02fffdfcfbfaf9f8);
+        ctr.seek(0xf7f6f5f4f3f2f1f0 << 4);
+        output = AesCipher::new(key, ctr).decrypt(&input[3 * BLOCK_SIZE..4 * BLOCK_SIZE]);
+        assert_eq!(output, correct_output[3 * BLOCK_SIZE..4 * BLOCK_SIZE]);
+    }
+
+    #[test]
+    fn test_aes_256_ctr_encryption() {
+        // NIST test vector F.5.3
+        let key = aes_256_key();
+
+        let input = plaintext();
+        let correct_output = "601ec313775789a5b7a7f504bbf3d228\
+                              f443e3ca4d62b59aca84e990cacaf5c5\
+                              2b0930daa23de94ce87017ba2d84988d\
+                              dfc9c58db67aada613c2dd08457941a6"
+            .decode_hex()
+            .unwrap();
+
+        /* NIST and I count differently... */
+        let mut ctr = CtrMode::new(0xfffefdfcfbfaf9f8);
+        ctr.seek(0xf7f6f5f4f3f2f1f0 << 4);
+        let mut output = AesCipher::new(key, ctr).encrypt(&input[..BLOCK_SIZE]);
+        assert_eq!(output, correct_output[..BLOCK_SIZE]);
+
+        ctr = CtrMode::new(0x00fffdfcfbfaf9f8);
+        ctr.seek(0xf7f6f5f4f3f2f1f0 << 4);
+        output = AesCipher::new(key, ctr).encrypt(&input[BLOCK_SIZE..2 * BLOCK_SIZE]);
+        assert_eq!(output, correct_output[BLOCK_SIZE..2 * BLOCK_SIZE]);
+
+        ctr = CtrMode::new(0x01fffdfcfbfaf9f8);
+        ctr.seek(0xf7f6f5f4f3f2f1f0 << 4);
+        output = AesCipher::new(key, ctr).encrypt(&input[2 * BLOCK_SIZE..3 * BLOCK_SIZE]);
+        assert_eq!(output, correct_output[2 * BLOCK_SIZE..3 * BLOCK_SIZE]);
+
+        ctr = CtrMode::new(0x02fffdfcfbfaf9f8);
+        ctr.seek(0xf7f6f5f4f3f2f1f0 << 4);
+        output = AesCipher::new(key, ctr).encrypt(&input[3 * BLOCK_SIZE..4 * BLOCK_SIZE]);
+        assert_eq!(output, correct_output[3 * BLOCK_SIZE..4 * BLOCK_SIZE]);
+    }
+
+    #[test]
+    fn test_aes_256_ctr_decryption() {
+        // NIST test vector F.5.4
+        let key = aes_256_key();
+
+        let correct_output = plaintext();
+        let input = "601ec313775789a5b7a7f504bbf3d228\
+                     f443e3ca4d62b59aca84e990cacaf5c5\
+                     2b0930daa23de94ce87017ba2d84988d\
+                     dfc9c58db67aada613c2dd08457941a6"
+            .decode_hex()
+            .unwrap();
+
+        /* NIST and I count differently... */
+        let mut ctr = CtrMode::new(0xfffefdfcfbfaf9f8);
+        ctr.seek(0xf7f6f5f4f3f2f1f0 << 4);
+        let mut output = AesCipher::new(key, ctr).decrypt(&input[..BLOCK_SIZE]);
+        assert_eq!(output, correct_output[..BLOCK_SIZE]);
+
+        ctr = CtrMode::new(0x00fffdfcfbfaf9f8);
+        ctr.seek(0xf7f6f5f4f3f2f1f0 << 4);
+        output = AesCipher::new(key, ctr).decrypt(&input[BLOCK_SIZE..2 * BLOCK_SIZE]);
+        assert_eq!(output, correct_output[BLOCK_SIZE..2 * BLOCK_SIZE]);
+
+        ctr = CtrMode::new(0x01fffdfcfbfaf9f8);
+        ctr.seek(0xf7f6f5f4f3f2f1f0 << 4);
+        output = AesCipher::new(key, ctr).decrypt(&input[2 * BLOCK_SIZE..3 * BLOCK_SIZE]);
+        assert_eq!(output, correct_output[2 * BLOCK_SIZE..3 * BLOCK_SIZE]);
+
+        ctr = CtrMode::new(0x02fffdfcfbfaf9f8);
+        ctr.seek(0xf7f6f5f4f3f2f1f0 << 4);
+        output = AesCipher::new(key, ctr).decrypt(&input[3 * BLOCK_SIZE..4 * BLOCK_SIZE]);
+        assert_eq!(output, correct_output[3 * BLOCK_SIZE..4 * BLOCK_SIZE]);
+    }
 }
