@@ -6,6 +6,8 @@ mod soft;
 mod modes;
 use std::{arch::x86_64::__m128i, mem};
 
+mod kat;
+
 pub use modes::{CbcMode, CipherMode, CtrMode, EcbMode};
 
 pub const BLOCK_SIZE: usize = 16;
